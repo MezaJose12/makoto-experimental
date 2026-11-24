@@ -1,0 +1,25 @@
+{
+  "idioma": "es-EC",
+  "formatoSalida": "riff-24khz-16bit-mono-pcm",
+  "velocidad": "0%",
+  "toleranciaHz": 5,
+  "precisionHz": 2,
+  "maxIntentos": 5,
+  "bandaAmbiguaHz": [145, 165],
+  "voces": {
+    "Femenino": "es-EC-AndreaNeural",
+    "Masculino": "es-EC-LuisNeural"
+  },
+  "rangoPraatHz": {
+    "Femenino": [100, 500],
+    "Masculino": [70, 300]
+  },
+  "celdas": [
+    { "codigo": "F_GRAVE",  "genero": "Femenino",  "f0ObjetivoHz": 175 },
+    { "codigo": "F_NEUTRA", "genero": "Femenino",  "f0ObjetivoHz": 210 },
+    { "codigo": "F_AGUDA",  "genero": "Femenino",  "f0ObjetivoHz": 255 },
+    { "codigo": "M_GRAVE",  "genero": "Masculino", "f0ObjetivoHz": 100 },
+    { "codigo": "M_NEUTRA", "genero": "Masculino", "f0ObjetivoHz": 118 },
+    { "codigo": "M_AGUDA",  "genero": "Masculino", "f0ObjetivoHz": 138 }
+  ]
+}

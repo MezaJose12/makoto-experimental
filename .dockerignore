@@ -11,3 +11,4 @@ frontend
 docs
 .env
 **/appsettings.*.local.json
+tools

@@ -19,7 +19,13 @@ dist/
 *.wav
 *.mp3
 !datos/audios/certificados/*.mp3
+# Python (pipeline de audio)
+.venv/
+__pycache__/
+.pytest_cache/
 
 # Sistema
 .DS_Store
 Thumbs.db
+# Sistema
+.DS_Store

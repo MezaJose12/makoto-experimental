@@ -1,0 +1,144 @@
+{
+  "generadoUtc": "2026-11-24T21:13:30+00:00",
+  "proveedor": "Azure Speech (brazilsouth)",
+  "idioma": "es-EC",
+  "formato": "riff-24khz-16bit-mono-pcm",
+  "velocidad": "0%",
+  "guion": "Gracias por contarme cómo te sientes. Es completamente comprensible sentir presión cuando se acercan los exámenes y las entregas se acumulan. Lo que estás viviendo le pasa a muchos estudiantes, y no significa que no seas capaz. Te propongo algo sencillo: respira profundo un momento y elige una sola tarea pequeña para empezar hoy. Avanzar paso a paso suele aliviar la sensación de que todo es demasiado. Y recuerda que no tienes que hacerlo solo: en el servicio de bienestar estudiantil de tu universidad hay personas dispuestas a escucharte.",
+  "celdas": [
+    {
+      "codigo": "F_GRAVE",
+      "voz": "es-EC-AndreaNeural",
+      "f0ObjetivoHz": 175.0,
+      "ajusteTonoHz": -9,
+      "f0MedidoHz": 173.0,
+      "f0DesviacionHz": 28.6,
+      "duracionS": 32.17,
+      "dentroDeTolerancia": true,
+      "archivo": "f_grave.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 0,
+          "f0MedidoHz": 184.2
+        },
+        {
+          "desplazamientoHz": -9,
+          "f0MedidoHz": 173.0
+        }
+      ]
+    },
+    {
+      "codigo": "F_NEUTRA",
+      "voz": "es-EC-AndreaNeural",
+      "f0ObjetivoHz": 210.0,
+      "ajusteTonoHz": 20,
+      "f0MedidoHz": 208.3,
+      "f0DesviacionHz": 34.7,
+      "duracionS": 32.17,
+      "dentroDeTolerancia": true,
+      "archivo": "f_neutra.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 28,
+          "f0MedidoHz": 217.8
+        },
+        {
+          "desplazamientoHz": 20,
+          "f0MedidoHz": 208.3
+        }
+      ]
+    },
+    {
+      "codigo": "F_AGUDA",
+      "voz": "es-EC-AndreaNeural",
+      "f0ObjetivoHz": 255.0,
+      "ajusteTonoHz": 60,
+      "f0MedidoHz": 253.8,
+      "f0DesviacionHz": 47.8,
+      "duracionS": 32.19,
+      "dentroDeTolerancia": true,
+      "archivo": "f_aguda.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 67,
+          "f0MedidoHz": 262.2
+        },
+        {
+          "desplazamientoHz": 60,
+          "f0MedidoHz": 253.8
+        }
+      ]
+    },
+    {
+      "codigo": "M_GRAVE",
+      "voz": "es-EC-LuisNeural",
+      "f0ObjetivoHz": 100.0,
+      "ajusteTonoHz": -3,
+      "f0MedidoHz": 100.9,
+      "f0DesviacionHz": 20.0,
+      "duracionS": 37.2,
+      "dentroDeTolerancia": true,
+      "archivo": "m_grave.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 0,
+          "f0MedidoHz": 102.7
+        },
+        {
+          "desplazamientoHz": -3,
+          "f0MedidoHz": 100.9
+        }
+      ]
+    },
+    {
+      "codigo": "M_NEUTRA",
+      "voz": "es-EC-LuisNeural",
+      "f0ObjetivoHz": 118.0,
+      "ajusteTonoHz": 24,
+      "f0MedidoHz": 116.9,
+      "f0DesviacionHz": 25.2,
+      "duracionS": 37.21,
+      "dentroDeTolerancia": true,
+      "archivo": "m_neutra.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 14,
+          "f0MedidoHz": 110.7
+        },
+        {
+          "desplazamientoHz": 21,
+          "f0MedidoHz": 115.2
+        },
+        {
+          "desplazamientoHz": 24,
+          "f0MedidoHz": 116.9
+        }
+      ]
+    },
+    {
+      "codigo": "M_AGUDA",
+      "voz": "es-EC-LuisNeural",
+      "f0ObjetivoHz": 138.0,
+      "ajusteTonoHz": 56,
+      "f0MedidoHz": 137.4,
+      "f0DesviacionHz": 30.2,
+      "duracionS": 37.22,
+      "dentroDeTolerancia": true,
+      "archivo": "m_aguda.wav",
+      "intentos": [
+        {
+          "desplazamientoHz": 45,
+          "f0MedidoHz": 129.5
+        },
+        {
+          "desplazamientoHz": 54,
+          "f0MedidoHz": 135.6
+        },
+        {
+          "desplazamientoHz": 56,
+          "f0MedidoHz": 137.4
+        }
+      ]
+    }
+  ]
+}
