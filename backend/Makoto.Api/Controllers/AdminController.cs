@@ -1,0 +1,39 @@
+using Makoto.Api.Contracts;
+using Makoto.Api.Data;
+using Makoto.Api.Models;
+using Makoto.Api.Security;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Makoto.Api.Controllers;
+
+/// <summary>Endpoints del Dashboard. Protegidos con la clave temporal hasta el login JWT (T2-20).</summary>
+[ApiController]
+[Route("api/admin")]
+[Produces("application/json")]
+[ClaveAdminTemporal]
+public class AdminController(MakotoDbContext db) : ControllerBase
+{
+    /// <summary>Catálogo de las 6 condiciones 2×3 y si su audio ya está certificado.</summary>
+    [HttpGet("condiciones")]
+    [ProducesResponseType<IReadOnlyList<CondicionResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IReadOnlyList<CondicionResponse>> Condiciones(CancellationToken ct) =>
+        await db.Condiciones.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => new CondicionResponse(c.Id, c.Codigo, c.Genero, c.Nivel,
+                                               c.F0ObjetivoHz, c.F0MedidoHz, c.Sha256 != null))
+            .ToListAsync(ct);
+
+    /// <summary>Sesiones completadas y en curso por celda: muestra si el balanceo funciona.</summary>
+    [HttpGet("cuotas")]
+    [ProducesResponseType<IReadOnlyList<CuotaResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IReadOnlyList<CuotaResponse>> Cuotas(CancellationToken ct) =>
+        await db.Condiciones.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => new CuotaResponse(c.Codigo, c.Genero, c.Nivel,
+                c.Sesiones.Count(s => s.Estado == EstadoSesion.Completada),
+                c.Sesiones.Count(s => s.Estado == EstadoSesion.Iniciada || s.Estado == EstadoSesion.EnAudio)))
+            .ToListAsync(ct);
+}

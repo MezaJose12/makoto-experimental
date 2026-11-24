@@ -1,0 +1,25 @@
+# .NET y Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+appsettings.*.local.json
+
+# Front-end (React + Vite)
+node_modules/
+dist/
+
+# Secretos
+.env
+*.pem
+
+# Audios: solo se versionan los 6 certificados (los necesita la imagen de Render)
+*.wav
+*.mp3
+!datos/audios/certificados/*.mp3
+
+# Sistema
+.DS_Store
+Thumbs.db

@@ -1,0 +1,46 @@
+# Entorno local de Makoto: PostgreSQL + API .NET
+#   1) cp .env.example .env   (y cambie la contraseña)
+#   2) docker compose up --build
+#   3) http://localhost:8080/health  y  http://localhost:8080/health/ready
+name: makoto
+
+services:
+  postgres:
+    # Use la misma versión mayor que su proyecto en Neon (Neon → Configuración → versión de Postgres)
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-makoto}
+      POSTGRES_USER: ${POSTGRES_USER:-makoto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
+    volumes:
+      - makoto_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      # Solo en su equipo (127.0.0.1), para herramientas como DBeaver o pgAdmin
+      - "127.0.0.1:5432:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Makoto.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-makoto};Username=${POSTGRES_USER:-makoto};Password=${POSTGRES_PASSWORD}"
+      Audios__Ruta: /app/datos/audios
+      Cors__Origenes__0: http://localhost:5173
+      Admin__ClaveTemporal: ${ADMIN_CLAVE_TEMPORAL:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      # Los audios del disco se ven dentro del contenedor, en solo lectura
+      - ./datos/audios:/app/datos/audios:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  makoto_pgdata:

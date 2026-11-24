@@ -1,0 +1,68 @@
+# Integración continua de Makoto: en cada push a main y en cada pull request
+#  1) compila la solución y ejecuta las pruebas
+#  2) compila la PWA
+#  3) levanta docker compose y verifica /health y /health/ready (criterio de REV-TEC 01)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Compilar y probar (.NET 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Makoto.slnx
+      - run: dotnet build Makoto.slnx -c Release --no-restore
+      - run: dotnet test Makoto.slnx -c Release --no-build --verbosity normal
+
+  frontend:
+    name: Compilar la PWA (React + Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/makoto-pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/makoto-pwa/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  compose:
+    name: Docker Compose de extremo a extremo
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crear .env de prueba
+        run: cp .env.example .env
+      - name: Construir y levantar
+        run: docker compose up -d --build
+      - name: Esperar a que la API responda en /health
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/health && exit 0
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: Verificar PostgreSQL y audios en /health/ready
+        run: curl -fsS http://localhost:8080/health/ready
+      - name: Verificar la migración (6 condiciones sembradas)
+        run: |
+          n=$(curl -fsS -H "X-Admin-Key: cambie_esta_clave_admin" http://localhost:8080/api/admin/condiciones | grep -o '"codigo"' | wc -l)
+          echo "Condiciones: $n"; test "$n" -eq 6
+      - name: Apagar
+        if: always()
+        run: docker compose down -v
