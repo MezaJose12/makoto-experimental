@@ -106,9 +106,17 @@ class ClienteAzure:
 
     @classmethod
     def desde_entorno(cls) -> "ClienteAzure":
-        clave, region = os.environ.get("AZURE_SPEECH_KEY"), os.environ.get("AZURE_SPEECH_REGION")
+        # T2-03 (ajuste del 25/11): en cmd, "set VAR = valor" o "set VAR="valor"" guardaba espacios y
+        # comillas dentro del valor, y la URL de Azure se armaba con la región entre comillas
+        # ("%22brazilsouth%22.tts.speech.microsoft.com"). Se limpian antes de usarlas.
+        limpiar = lambda v: (v or "").strip().strip("\"'").strip()
+        clave = limpiar(os.environ.get("AZURE_SPEECH_KEY"))
+        region = limpiar(os.environ.get("AZURE_SPEECH_REGION")).lower()
         if not clave or not region:
             sys.exit("Defina AZURE_SPEECH_KEY y AZURE_SPEECH_REGION (vea el README).")
+        # Una región válida solo tiene letras y números (eastus, brazilsouth): se rechaza cualquier otra cosa
+        if not region.isalnum():
+            sys.exit("AZURE_SPEECH_REGION no es válida: use el nombre corto, p. ej. eastus o brazilsouth.")
         return cls(clave, region)
 
     def _post(self, ssml: str, formato: str) -> bytes:

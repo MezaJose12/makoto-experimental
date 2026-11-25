@@ -39,6 +39,21 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
+  # T2-03: pruebas del pipeline de audio (sintetizador simulado y Praat real, sin llamar a Azure)
+  audio-pipeline:
+    name: Pipeline de audio (Python, sin Azure)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/audio-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests
+
   compose:
     name: Docker Compose de extremo a extremo
     runs-on: ubuntu-latest
@@ -63,6 +78,21 @@ jobs:
         run: |
           n=$(curl -fsS -H "X-Admin-Key: cambie_esta_clave_admin" http://localhost:8080/api/admin/condiciones | grep -o '"codigo"' | wc -l)
           echo "Condiciones: $n"; test "$n" -eq 6
+      # T2-05: si el candado de PostgreSQL fallara, dos solicitudes simultáneas podrían tomar la misma
+      # plaza y las celdas quedarían desbalanceadas. 60 solicitudes en paralelo deben dar 10 por celda.
+      - name: "T2-05: concurrencia del Asignador (60 sesiones simultáneas → 10 por celda)"
+        run: |
+          seq 60 | xargs -P 30 -I{} curl -fsS -o /dev/null -X POST -H "Content-Type: application/json" \
+            -d '{"consentimientoAceptado":true,"consentimientoVersion":"ci"}' http://localhost:8080/api/sesiones
+          curl -fsS -H "X-Admin-Key: cambie_esta_clave_admin" http://localhost:8080/api/admin/cuotas > cuotas.json
+          python3 -c "import json; v=[c['enCurso'] for c in json.load(open('cuotas.json'))]; print('En curso por celda:', v); assert v == [10]*6, v"
+      - name: "T2-05: el audio de una sesión se entrega como MP3"
+        run: |
+          id=$(curl -fsS -X POST -H "Content-Type: application/json" \
+            -d '{"consentimientoAceptado":true,"consentimientoVersion":"ci"}' http://localhost:8080/api/sesiones \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['sesionId'])")
+          tipo=$(curl -fsS -o audio.mp3 -w "%{content_type}" http://localhost:8080/api/sesiones/$id/audio)
+          echo "Tipo: $tipo · $(wc -c < audio.mp3) bytes"; test "$tipo" = "audio/mpeg"
       - name: Apagar
         if: always()
         run: docker compose down -v

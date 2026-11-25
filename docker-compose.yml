@@ -33,6 +33,8 @@ services:
       Audios__Ruta: /app/datos/audios
       Cors__Origenes__0: http://localhost:5173
       Admin__ClaveTemporal: ${ADMIN_CLAVE_TEMPORAL:-}
+      # T2-05: código del estudio para iniciar sesiones (vacío = sin código, útil en desarrollo y en la CI)
+      Estudio__CodigoAcceso: ${ESTUDIO_CODIGO_ACCESO:-}
     ports:
       - "8080:8080"
     volumes:

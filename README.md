@@ -2,7 +2,7 @@
 
 Aplicación para evaluar cómo el género y la frecuencia fundamental (F0) de la voz de un chatbot de apoyo emocional influyen en la empatía que perciben estudiantes universitarios (diseño factorial 2 × 3). Universidad de las Fuerzas Armadas ESPE · Ingeniería en TIC.
 
-> Estado: **T2-02 · Modelo de datos, contrato REST y estructura de la PWA**. Las tablas se crean con migraciones de EF Core; los endpoints del estudiante están definidos en el contrato y su lógica llega en T2-05 (Asignador), T2-08 (Test) y T2-10 (Telemetría).
+> Estado: **T2-05 · Asignador de condiciones**. Ya están el modelo de datos (T2-02), los 6 audios sintetizados (T2-03) y certificados (T2-04), y la asignación balanceada de la celda 2×3 con entrega del audio (T2-05). Faltan la lógica del Test (T2-08) y de la Telemetría (T2-10).
 
 ## Estructura
 
@@ -20,12 +20,14 @@ makoto-experimental/
 │   │   ├── Migrations/         # Migraciones de EF Core (se generan con dotnet ef)
 │   │   ├── Contracts/          # DTO: lo único que ve la PWA
 │   │   ├── Controllers/        # SesionesController (público) y AdminController (clave temporal)
+│   │   ├── Services/           # AsignadorCondiciones: elige la celda 2×3 de cada participante (T2-05)
 │   │   ├── Security/           # Clave temporal del panel (hasta el JWT de T2-20)
 │   │   ├── Health/             # Comprobaciones de PostgreSQL y audios
 │   │   └── Dockerfile          # Imagen multi-etapa; se construye desde la raíz
 │   └── Makoto.Tests/           # Pruebas xUnit
 ├── frontend/makoto-pwa/        # React PWA (Vite): experimento, test y dashboard
 ├── datos/audios/certificados/  # Los 6 audios certificados (T2-03 y T2-04)
+├── tools/audio-pipeline/       # Síntesis de los 6 audios con Azure Speech + medición de F0 con Praat (T2-03)
 ├── docs/                       # Arquitectura y planificación
 └── .github/workflows/ci.yml    # Compilación, pruebas y prueba de Docker Compose
 ```
@@ -68,16 +70,87 @@ Tablas (snake_case): `condiciones_vocales`, `sesiones_experimentales`, `datos_pa
 
 | Método y ruta | Quién lo usa | Estado |
 | --- | --- | --- |
-| `POST /api/sesiones` | Experimento | Contrato · lógica en T2-05 |
+| `POST /api/sesiones` | Experimento | Implementado (T2-05) · asigna la celda 2×3 menos ocupada |
 | `GET /api/sesiones/{id}` | Experimento y Test | Implementado |
-| `GET /api/sesiones/{id}/audio` | Reproductor | Contrato · T2-05 |
+| `GET /api/sesiones/{id}/audio` | Reproductor | Implementado (T2-05) · MP3 certificado de la sesión |
 | `POST /api/sesiones/{id}/participante` | Test | Contrato · T2-08 |
 | `POST /api/sesiones/{id}/eventos` | Reproductor | Contrato · T2-10 |
 | `POST /api/sesiones/{id}/evaluacion` | Test | Contrato · T2-08 |
 | `GET /api/admin/condiciones` | Dashboard | Implementado · cabecera `X-Admin-Key` |
 | `GET /api/admin/cuotas` | Dashboard | Implementado · cabecera `X-Admin-Key` |
 
-Los endpoints pendientes responden `501` con un ProblemDetails que indica la tarea. El contrato completo está en http://localhost:8080/openapi/v1.json (solo en desarrollo).
+Los endpoints pendientes responden `501` con un ProblemDetails que indica la tarea.
+
+Respuestas de `POST /api/sesiones`: `201` con `sesionId`, `estado` y `audioUrl`; `400` sin consentimiento; `403` si el código del estudio falta o es incorrecto; `503` si no hay audios certificados. Respuestas de `GET /api/sesiones/{id}/audio`: `200 audio/mpeg`; `404` si la sesión no existe; `409` si ya terminó o expiró; `503` si su audio no está certificado.
+
+## Asignador de condiciones (T2-05)
+
+Cada participante recibe una de las 6 celdas (género × frecuencia) sin poder elegirla:
+
+1. Se toma un candado de PostgreSQL (`pg_advisory_xact_lock`) para que dos estudiantes que entran al mismo tiempo no ocupen la misma plaza.
+2. Las sesiones abandonadas (sin terminar tras `Estudio:ReservaMinutos`, 30 min por defecto) pasan a `Expirada` y liberan su plaza.
+3. Se cuenta la ocupación de cada celda certificada: sesiones completadas más las que están en curso.
+4. Se elige la celda menos ocupada; si hay empate, al azar.
+5. Se crea la sesión con un código de participante `MK-XXXXXXXX` generado en el servidor (sin datos personales).
+
+Solo se asignan celdas cuyo audio pasó la certificación de T2-04. La CI comprueba que 60 sesiones simultáneas quedan 10 por celda.
+
+## Probar la API desde Windows
+
+PowerShell no interpreta las comillas `\"` como `cmd`, por eso el `curl.exe` copiado de `cmd` le envía un JSON roto (error `'\' is an invalid start of a property name`). En PowerShell use `Invoke-RestMethod`:
+
+```powershell
+$r = Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/sesiones -ContentType "application/json" -Body '{"consentimientoAceptado":true,"consentimientoVersion":"v1"}'
+$r                                                   # sesionId, estado, audioUrl
+Start-Process ("http://localhost:8080" + $r.audioUrl) # escucha el audio asignado
+Invoke-RestMethod -Uri http://localhost:8080/api/admin/cuotas -Headers @{ "X-Admin-Key" = "<ADMIN_CLAVE_TEMPORAL del .env>" }
+```
+
+En `cmd`:
+
+```bat
+curl.exe -X POST -H "Content-Type: application/json" -d "{\"consentimientoAceptado\":true,\"consentimientoVersion\":\"v1\"}" http://localhost:8080/api/sesiones
+```
+
+Si `ESTUDIO_CODIGO_ACCESO` tiene un valor en el `.env`, agregue `"codigoAcceso":"<ese valor>"` al JSON; si no, la API responde `403`.
+
+## Audios: síntesis y certificación (T2-03 y T2-04)
+
+Se ejecuta desde `tools/audio-pipeline` (necesita Python 3.12 y una clave de Azure Speech):
+
+```bat
+cd tools\audio-pipeline
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m pytest -q tests
+
+set AZURE_SPEECH_KEY=su_clave
+set AZURE_SPEECH_REGION=su_region
+python sintetizar.py voces       # comprueba que es-EC-AndreaNeural y es-EC-LuisNeural existen
+python sintetizar.py generar     # datos/audios/crudos/*.wav + sintesis.json
+python certificar.py             # datos/audios/certificados/*.mp3 + certificacion.json
+```
+
+- En `cmd`, `set VARIABLE=valor` va sin espacios alrededor del `=` y sin comillas: `set AZURE_SPEECH_REGION="brazilsouth"` guarda las comillas y la URL falla con `%22brazilsouth%22`. `sintetizar.py` ya limpia comillas y espacios, pero conviene escribirlo bien. En PowerShell: `$env:AZURE_SPEECH_KEY="su_clave"`.
+- Ejecute `activate` y `pytest` en líneas separadas y siempre desde `tools/audio-pipeline` (desde otra carpeta pytest no encuentra `tests`).
+- El F0 se calibra por iteraciones: se sintetiza con `<prosody pitch>`, se mide con Praat y se corrige hasta quedar a ±5 Hz del objetivo.
+- La certificación iguala la intensidad a 70 dB, exige que las 6 pistas duren lo mismo (±1 s) y guarda el SHA-256 de cada MP3. La API recalcula las huellas al arrancar y solo asigna las celdas que coinciden.
+- Luis habla más lento que Andrea (37,25 s frente a 32,21 s con el mismo guion), por eso `config.json` usa una velocidad por voz: Femenino `-7%` y Masculino `+7%`.
+- Si cambia `guion.txt` (guion validado de T1-04), vuelva a ejecutar `generar` y `certificar` y suba los MP3 nuevos y `certificacion.json`.
+
+Resultado aprobado (25/11/2026):
+
+| Celda | Objetivo | F0 medido | Duración |
+| --- | --- | --- | --- |
+| F_GRAVE | 175 Hz | 173,13 Hz | 34,63 s |
+| F_NEUTRA | 210 Hz | 207,89 Hz | 34,63 s |
+| F_AGUDA | 255 Hz | 253,46 Hz | 34,65 s |
+| M_GRAVE | 100 Hz | 101,53 Hz | 34,80 s |
+| M_NEUTRA | 118 Hz | 116,71 Hz | 34,82 s |
+| M_AGUDA | 138 Hz | 137,52 Hz | 34,82 s |
+
+Ningún F0 cae en la banda ambigua de 145–165 Hz. El contrato completo está en http://localhost:8080/openapi/v1.json (solo en desarrollo).
 
 ## PWA
 
@@ -112,6 +185,8 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 | `Cors__Origenes__0` | Origen permitido de la PWA | `http://localhost:5173` |
 | `PORT` | Puerto, si la plataforma lo define (Render) | `8080` |
 | `Admin__ClaveTemporal` | Clave del Dashboard hasta el JWT (T2-20) | (secreto) |
+| `Estudio__CodigoAcceso` | Código que se entrega a los participantes; vacío = sin código | (secreto) |
+| `Estudio__ReservaMinutos` | Minutos antes de liberar la plaza de una sesión abandonada | `30` |
 | `Database__AplicarMigraciones` | Aplica migraciones al arrancar (por defecto `true`) | `true` |
 
 ## Pruebas
@@ -120,7 +195,9 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 dotnet test Makoto.slnx
 ```
 
-Las pruebas no necesitan PostgreSQL: comprueban la conversión de la cadena de conexión, el catálogo 2×3 (ningún F0 en la banda ambigua), los nombres de columna, `/health` sin base de datos, OpenAPI oculto en producción, CORS, la clave del panel y los códigos 400 y 501.
+Las pruebas no necesitan PostgreSQL: comprueban la conversión de la cadena de conexión, el catálogo 2×3 (ningún F0 en la banda ambigua), los nombres de columna, `/health` sin base de datos, OpenAPI oculto en producción, CORS, la clave del panel, los códigos 400, 403 y 501, la verificación de huellas de los audios y las reglas del Asignador (celda menos ocupada, empates al azar, 600 asignaciones → 100 por celda, formato del código de participante). La concurrencia real con PostgreSQL se prueba en la CI.
+
+Para revisar dependencias vulnerables: `dotnet list package --vulnerable --include-transitive`.
 
 ## Verificación de REV-TEC 01
 
@@ -138,3 +215,26 @@ Las pruebas no necesitan PostgreSQL: comprueban la conversión de la cadena de c
 - [ ] `/openapi/v1.json` muestra todos los endpoints con sus esquemas.
 - [ ] La PWA (`npm run dev`) muestra las cuotas en el Dashboard y el aviso 501 en el Experimento.
 - [ ] La CI de GitHub termina en verde (back-end, PWA y Docker Compose).
+
+## Verificación de REV-TEC 03
+
+- [ ] Los 6 audios están en `datos/audios/certificados/` y `/health/ready` informa «Audios certificados: 6 de 6» en el log.
+- [ ] `POST /api/sesiones` responde `201` con `sesionId` y `audioUrl`, y el audio se reproduce.
+- [ ] Sin consentimiento responde `400`; con un código de estudio incorrecto, `403`.
+- [ ] El Dashboard muestra la sesión «en curso» en su celda.
+- [ ] La CI muestra «En curso por celda: [10, 10, 10, 10, 10, 10]».
+
+## Problemas frecuentes
+
+| Síntoma | Causa y solución |
+| --- | --- |
+| `dotnet ef migrations add` dice que no puede crear el DbContext | Falta la cadena en tiempo de diseño. La resuelve `Data/MakotoDbContextFactory.cs`; ejecute el comando desde `backend/Makoto.Api`. |
+| Docker: `relation "administradores" already exists` | El volumen tiene tablas de una migración anterior o hay dos migraciones iniciales. `docker compose down -v` (si persiste, `docker volume rm makoto_makoto_pgdata`) y deje una sola migración en `Migrations/`. |
+| Log: `relation "__EFMigrationsHistory" does not exist` | Normal en el primer arranque: EF Core la crea en ese momento. |
+| La PWA dice «página no encontrada» | La PWA corre en http://localhost:5173 con `npm run dev`; el puerto 8080 es solo la API. |
+| Advertencia NU1903 (vulnerabilidad transitiva) | Use las versiones fijas del `.csproj` (Design 10.0.15, Npgsql EF 10.0.4), no `10.0.*`. |
+| `git push`: `'origin' does not appear to be a git repository` | `git remote add origin https://github.com/MezaJose12/makoto-experimental.git` y luego `git push -u origin main`. |
+| `curl.exe` en PowerShell: `'\' is an invalid start of a property name` | Use `Invoke-RestMethod` (ver «Probar la API desde Windows»). |
+| Azure: URL con `%22` o `ConnectionError` | Comillas o espacios en `set AZURE_SPEECH_REGION`. Escríbalo sin comillas ni espacios. |
+| `pytest`: `file or directory not found: tests` | Ejecútelo desde `tools/audio-pipeline`. |
+| Certificación rechazada por duración | Ajuste `velocidad` por voz en `config.json` y repita `generar` y `certificar`. |
