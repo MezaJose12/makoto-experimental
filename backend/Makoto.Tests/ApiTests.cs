@@ -20,7 +20,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Cors__Origenes__0", OrigenPermitido);
         Environment.SetEnvironmentVariable("Database__AplicarMigraciones", "false");
         Environment.SetEnvironmentVariable("Admin__ClaveTemporal", ClaveAdmin);
+        // T2-05: con un código de estudio configurado, iniciar sesión sin él debe rechazarse
+        Environment.SetEnvironmentVariable("Estudio__CodigoAcceso", CodigoEstudio);
     }
+
+    public const string CodigoEstudio = "codigo-de-prueba";
 
     public const string ClaveAdmin = "clave-de-prueba";
 
@@ -94,5 +98,32 @@ public class ApiTests(ApiFactory factory) : IClassFixture<ApiFactory>
             new StringContent("""{"consentimientoVersion":""}""", System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // T2-05: sin consentimiento no se crea la sesión (se valida antes de tocar la base de datos)
+    [Fact]
+    public async Task Iniciar_SinConsentimiento_Responde400()
+    {
+        var response = await factory.CreateClient().PostAsync("/api/sesiones", new StringContent(
+            $$"""{"consentimientoAceptado":false,"consentimientoVersion":"v1","codigoAcceso":"{{ApiFactory.CodigoEstudio}}"}""",
+            System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // T2-05: con código de estudio configurado, un código incorrecto o ausente responde 403
+    [Theory]
+    [InlineData(null)]
+    [InlineData("otro-codigo")]
+    public async Task Iniciar_SinCodigoDelEstudio_Responde403(string? codigo)
+    {
+        var cuerpo = codigo is null
+            ? """{"consentimientoAceptado":true,"consentimientoVersion":"v1"}"""
+            : $$"""{"consentimientoAceptado":true,"consentimientoVersion":"v1","codigoAcceso":"{{codigo}}"}""";
+
+        var response = await factory.CreateClient().PostAsync("/api/sesiones",
+            new StringContent(cuerpo, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

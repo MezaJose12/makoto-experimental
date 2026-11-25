@@ -9,10 +9,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
-    <!-- Proveedor de PostgreSQL para EF Core: última versión 10.0.x -->
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.*" />
+    <!-- Versiones fijas, verificadas sin avisos de seguridad (24/11/2026). No usar 10.0.*: cada equipo
+         y la CI podrían descargar versiones distintas, y la 10.0.1 de Design arrastra dependencias con avisos. -->
+    <!-- Proveedor de PostgreSQL para EF Core -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
     <!-- Herramientas de migraciones (dotnet ef): solo en desarrollo, no se publican -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Makoto.Api.Data;
 using Makoto.Api.Health;
+using Makoto.Api.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +29,9 @@ var rutaAudios = builder.Configuration["Audios:Ruta"] ?? "datos/audios";
 if (!Path.IsPathRooted(rutaAudios))
     rutaAudios = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, rutaAudios));
 builder.Services.AddSingleton(new AudiosOptions(rutaAudios));
+
+// T2-05: Asignador de condiciones (balanceo 2×3 con candado de PostgreSQL), uno por solicitud
+builder.Services.AddScoped<AsignadorCondiciones>();
 
 // ── CORS: solo los orígenes configurados (la PWA) ────────────────────────
 var origenes = builder.Configuration.GetSection("Cors:Origenes").Get<string[]>() ?? [];
