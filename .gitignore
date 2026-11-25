@@ -13,6 +13,7 @@ dist/
 
 # Secretos
 .env
+.env.example
 *.pem
 
 # Audios: solo se versionan los 6 certificados (los necesita la imagen de Render)
