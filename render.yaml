@@ -1,0 +1,27 @@
+# T2-18: Blueprint de Render (Render → New → Blueprint → este repositorio).
+# NINGÚN secreto vive en este archivo:
+#   sync: false      → Render pide el valor al crear el Blueprint y lo guarda cifrado; no se sube a GitHub.
+#   generateValue    → Render genera un valor aleatorio fuerte (se consulta en Environment del servicio).
+services:
+  - type: web
+    name: makoto-experimental
+    runtime: docker
+    plan: free
+    # Ohio: misma zona que Neon (AWS us-east-2), menos latencia hacia la base de datos
+    region: ohio
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    # /health no consulta la base de datos: Render no despierta a Neon en cada comprobación
+    healthCheckPath: /health
+    # Despliega solo cuando la CI de GitHub termina en verde
+    autoDeployTrigger: checksPass
+    envVars:
+      # URI de la rama «producción» de Neon (Neon → Connect → Pooled connection)
+      - key: DATABASE_URL
+        sync: false
+      # Clave del Dashboard hasta el JWT (T2-20): aleatoria, nadie la elige ni la escribe en Git
+      - key: Admin__ClaveTemporal
+        generateValue: true
+      # Código que se entrega a los participantes en el laboratorio (sin él no se crean sesiones)
+      - key: Estudio__CodigoAcceso
+        sync: false

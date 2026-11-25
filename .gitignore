@@ -12,14 +12,22 @@ node_modules/
 dist/
 
 # Secretos
+# T2-18: se ignoran .env y cualquier variante (.env.local, .env.neon…), pero NO .env.example:
+# es la plantilla sin secretos que necesitan la CI y quien clone el repositorio.
 .env
-.env.example
+.env.*
+!.env.example
+!frontend/makoto-pwa/.env.development
+!frontend/makoto-pwa/.env.production
 *.pem
+*.pfx
+*.key
 
 # Audios: solo se versionan los 6 certificados (los necesita la imagen de Render)
 *.wav
 *.mp3
 !datos/audios/certificados/*.mp3
+
 # Python (pipeline de audio)
 .venv/
 __pycache__/
@@ -28,5 +36,3 @@ __pycache__/
 # Sistema
 .DS_Store
 Thumbs.db
-# Sistema
-.DS_Store

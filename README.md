@@ -11,6 +11,8 @@ makoto-experimental/
 ├── Makoto.slnx                 # Solución (.NET 10, Visual Studio 2026)
 ├── global.json                 # Fija el SDK de .NET 10
 ├── docker-compose.yml          # Entorno local: postgres (:5432) + backend (:8080)
+├── Dockerfile.render           # Imagen única para Render: PWA compilada dentro de la API (T2-18)
+├── render.yaml                 # Blueprint de Render, sin secretos (T2-18)
 ├── .env.example                # Variables locales (copiar como .env)
 ├── backend/
 │   ├── Makoto.Api/             # API ASP.NET Core 10
@@ -131,6 +133,83 @@ powershell -ExecutionPolicy Bypass -File tools\revision\prueba-asignador.ps1 -Cl
 
 El script funciona en Windows PowerShell 5.1 y en PowerShell 7. Envía las solicitudes en paralelo con `HttpClient` y sube el límite de 2 conexiones por servidor que trae .NET Framework; sin ese cambio, las solicitudes saldrían de dos en dos y no se probaría la concurrencia. Las sesiones de prueba usan `consentimientoVersion = "prueba-rev-tec-03"` (y las de la CI, `"ci"`) para poder separarlas del estudio real.
 
+## Despliegue en Render (T2-18)
+
+Un solo servicio web de Render (Docker) sirve la API y la PWA desde el mismo dominio HTTPS:
+
+```text
+Estudiante ──HTTPS──▶ Render (TLS) ──▶ contenedor: ASP.NET Core
+                                         ├── /            PWA (wwwroot, compilada en Dockerfile.render)
+                                         ├── /api/...     API REST
+                                         └── datos/audios/certificados (6 MP3 dentro de la imagen)
+                                                │ SSL (sslmode=require)
+                                                ▼
+                                         Neon · rama «producción»
+```
+
+Al ser el mismo origen, no hace falta CORS ni escribir la URL de la API en la PWA (`VITE_API_URL` queda vacío).
+
+### Primer despliegue
+
+1. **Neon:** en la rama **producción**, Connect → *Pooled connection* → copie la URI.
+2. **Render:** New → Blueprint → repositorio `makoto-experimental`. Render lee `render.yaml` y pide:
+   - `DATABASE_URL`: la URI de producción del paso 1.
+   - `Estudio__CodigoAcceso`: un código para los participantes, por ejemplo de 8 o más caracteres sin espacios.
+   - `Admin__ClaveTemporal` se genera sola. Consúltela en el servicio → Environment.
+3. Espere a que termine el despliegue. El log debe mostrar la migración aplicada y «Audios certificados: 6 de 6», sin avisos de `Estudio:CodigoAcceso` ni de `Admin:ClaveTemporal`.
+4. Compruebe:
+   - `https://<servicio>.onrender.com/health` → `Healthy`
+   - `https://<servicio>.onrender.com/health/ready` → `postgresql` y `audios` en `Healthy`
+   - `https://<servicio>.onrender.com/openapi/v1.json` → `404` (oculto en producción)
+   - `https://<servicio>.onrender.com/?codigo=<código>` → consentimiento → sesión creada
+5. Cuando funcione, borre en Render el Static Site y el Web Service anteriores (los de T2-02), para no dejar copias desactualizadas expuestas.
+
+El enlace para los participantes (o su QR) es `https://<servicio>.onrender.com/?codigo=<Estudio__CodigoAcceso>`. Sin el código, la API responde `403` y nadie ajeno al laboratorio puede llenar las cuotas.
+
+Con `autoDeployTrigger: checksPass`, Render despliega cada push a `main` solo cuando la CI termina en verde.
+
+Probar la imagen de Render en su equipo, contra el PostgreSQL local:
+
+```powershell
+docker build -f Dockerfile.render -t makoto-render .
+docker run --rm -p 8081:8080 --network makoto_default -e Admin__ClaveTemporal=clave-local-larga-de-prueba-123 -e ConnectionStrings__Default="Host=postgres;Port=5432;Database=makoto;Username=makoto;Password=<la del .env>" makoto-render
+# http://localhost:8081  (sin HTTPS en local; HSTS solo se activa detrás de Render)
+```
+
+## Seguridad de claves y accesos
+
+| Qué | Dónde vive | Nunca en |
+| --- | --- | --- |
+| URI de Neon (usuario y contraseña) | `.env` local (rama desarrollo) y Render → Environment (rama producción) | `.env.example`, `appsettings*.json`, `render.yaml`, código, capturas |
+| Clave del Dashboard | `.env` local y Render (generada aleatoria) | PWA, código, Git |
+| Código del estudio | Render y el enlace o QR que se entrega en el laboratorio | Código de la PWA |
+| Contraseña del PostgreSQL local | `.env` | Git |
+
+Medidas en el código:
+- **Git:** `.gitignore` ignora `.env` y cualquier variante `.env.*`, salvo la plantilla `.env.example`, que solo lleva valores de ejemplo.
+- **Imagen:** `.dockerignore` impide que cualquier `.env`, `.git`, los audios crudos o `tools/` entren en la imagen. `Dockerfile.render` no recibe ningún secreto: llegan como variables de entorno en tiempo de ejecución.
+- **Front-end:** todo lo que empieza por `VITE_` es público (queda en el JavaScript). La PWA no lleva claves; el código del estudio llega en el enlace.
+- **API en producción:**
+  - OpenAPI oculto y errores sin detalles internos.
+  - HSTS y cabeceras de seguridad (CSP, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`).
+  - Panel limitado a `Seguridad:AdminSolicitudesPorMinuto` solicitudes por minuto y por IP (30 por defecto).
+  - Avisos en el log si el código del estudio o la clave del panel faltan.
+- **Base de datos:** conexión con SSL obligatorio. `/health` no la consulta, y `/health/ready` solo devuelve estados, nunca mensajes ni cadenas.
+
+**Si una clave llega a GitHub** (aunque luego se borre, sigue en el historial):
+1. Cámbiela de inmediato. En Neon: Branches → la rama → Roles → `neondb_owner` → *Reset password*. Hágalo en cada rama que comparta esa contraseña, porque una rama creada a partir de otra hereda sus contraseñas.
+2. Actualice la URI nueva en su `.env` y en Render.
+3. Quite el valor del archivo y haga commit. El valor antiguo ya no sirve, así que no hace falta reescribir el historial, aunque puede hacerlo con `git filter-repo`.
+4. Revise GitHub → Security → Secret scanning por si GitHub detectó el valor.
+
+Buscar secretos en todo el historial antes de cada revisión:
+
+```powershell
+git log -p --all | Select-String -Pattern "npg_|neon\.tech|ClaveTemporal=|PASSWORD=" | Select-Object -First 20
+```
+
+Solo deben aparecer valores de ejemplo (`cambie_esta_clave…`) o vacíos.
+
 ## Audios: síntesis y certificación (T2-03 y T2-04)
 
 Se ejecuta desde `tools/audio-pipeline` (necesita Python 3.12 y una clave de Azure Speech):
@@ -206,6 +285,8 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 | `Estudio__CodigoAcceso` | Código que se entrega a los participantes; vacío = sin código | (secreto) |
 | `Estudio__ReservaMinutos` | Minutos antes de liberar la plaza de una sesión abandonada | `30` |
 | `Database__AplicarMigraciones` | Aplica migraciones al arrancar (por defecto `true`) | `true` |
+| `Seguridad__AdminSolicitudesPorMinuto` | Límite de solicitudes al panel por IP y minuto (`429` al superarlo) | `30` |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Lo fija `Dockerfile.render`: la API reconoce el HTTPS y la IP real detrás del proxy de Render | `true` |
 
 ## Pruebas
 
@@ -259,6 +340,20 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 | La primera solicitud a Neon tarda o falla una vez | Arranque en frío de Neon: la base se apaga por inactividad. `EnableRetryOnFailure` reintenta. Antes de una demostración, abra `/health/ready`. |
 | PowerShell: «la ejecución de scripts está deshabilitada» | Ejecute el script con `powershell -ExecutionPolicy Bypass -File …`. Solo afecta a esa ejecución. |
 | Las cuotas del Dashboard incluyen sesiones de prueba | Ejecute `tools/revision/limpiar-pruebas.sql`. |
+| Render: el log avisa «Estudio:CodigoAcceso está vacío» | Defina `Estudio__CodigoAcceso` en Render → Environment y vuelva a desplegar. |
+| La PWA en Render dice «El enlace no tiene un código de estudio válido» | Abra la URL con `?codigo=<código>`, el mismo valor de `Estudio__CodigoAcceso`. |
+| El panel responde `429 Too Many Requests` | Se superó el límite de intentos por minuto. Espere un minuto. |
+| La primera visita a Render tarda unos 50 s | El plan gratuito duerme el servicio tras 15 min sin uso. Ábralo unos minutos antes de cada sesión o demostración, junto con `/health/ready` para despertar Neon. |
+| La CI falla en «Crear .env de prueba» | `.env.example` debe estar en Git (no en `.gitignore`) y sin valores reales. |
 | Certificación rechazada por duración | Ajuste `velocidad` por voz en `config.json` y repita `generar` y `certificar`. |
 
 Para la revisión con el Tutor 2, la misma verificación contra Neon: ver [docs/revisiones/REV-TEC-03.md](docs/revisiones/REV-TEC-03.md), sección 5.
+
+## Verificación de T2-18 (despliegue en Render)
+
+- [ ] `https://<servicio>.onrender.com/health` → `Healthy` y `/health/ready` con `postgresql` y `audios` en `Healthy`, contra la rama producción de Neon.
+- [ ] `/openapi/v1.json` → `404` y el panel sin clave → `401`.
+- [ ] La PWA con `?codigo=` crea la sesión; sin el código, aviso de enlace incorrecto (`403`).
+- [ ] El audio se reproduce desde la URL de Render.
+- [ ] En el log de Render no aparecen avisos de seguridad.
+- [ ] La búsqueda de secretos en el historial solo encuentra valores de ejemplo.

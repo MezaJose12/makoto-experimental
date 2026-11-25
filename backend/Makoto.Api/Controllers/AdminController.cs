@@ -3,6 +3,7 @@ using Makoto.Api.Data;
 using Makoto.Api.Models;
 using Makoto.Api.Security;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Makoto.Api.Controllers;
@@ -12,6 +13,8 @@ namespace Makoto.Api.Controllers;
 [Route("api/admin")]
 [Produces("application/json")]
 [ClaveAdminTemporal]
+// T2-18: máximo de solicitudes por minuto y por IP (Program.cs, política "admin") contra la fuerza bruta
+[EnableRateLimiting("admin")]
 public class AdminController(MakotoDbContext db) : ControllerBase
 {
     /// <summary>Catálogo de las 6 condiciones 2×3 y si su audio ya está certificado.</summary>

@@ -42,6 +42,17 @@ public class ApiTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Healthy", await response.Content.ReadAsStringAsync());
     }
 
+    // T2-18: cabeceras de seguridad en producción (Render)
+    [Fact]
+    public async Task Produccion_EnviaCabecerasDeSeguridad()
+    {
+        var response = await factory.CreateClient().GetAsync("/health");
+
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Contains("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
+    }
+
     [Fact]
     public async Task OpenApi_NoSeExpone_EnProduccion()
     {

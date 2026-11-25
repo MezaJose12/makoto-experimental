@@ -1,0 +1,45 @@
+# T2-18: imagen ÚNICA para Render. Compila la PWA (React) y la sirve desde la API (wwwroot):
+# un solo servicio, un solo origen HTTPS, sin CORS y sin URL de la API escrita en el front-end.
+# Se construye desde la RAÍZ del repositorio:
+#   docker build -f Dockerfile.render -t makoto-render .
+# No contiene secretos: DATABASE_URL, Admin__ClaveTemporal y Estudio__CodigoAcceso
+# se definen como variables de entorno en Render (render.yaml, sync: false / generateValue).
+
+# ── Etapa 1: compilar la PWA ─────────────────────────────────────────────
+FROM node:22-alpine AS pwa
+WORKDIR /pwa
+COPY frontend/makoto-pwa/package.json frontend/makoto-pwa/package-lock.json ./
+RUN npm ci
+COPY frontend/makoto-pwa/ ./
+# Vacío = mismo origen: la PWA llama a /api/... en el mismo dominio de Render
+ENV VITE_API_URL=""
+RUN npm run build
+
+# ── Etapa 2: compilar la API ─────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY backend/Makoto.Api/Makoto.Api.csproj backend/Makoto.Api/
+RUN dotnet restore backend/Makoto.Api/Makoto.Api.csproj
+COPY backend/Makoto.Api/ backend/Makoto.Api/
+RUN dotnet publish backend/Makoto.Api/Makoto.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
+
+# ── Etapa 3: ejecutar ────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# Production: OpenAPI oculto y errores sin detalles internos.
+# FORWARDEDHEADERS: Render termina el HTTPS; así la API sabe que la petición original era HTTPS
+# (HSTS) y ve la IP real del cliente (límite de intentos del panel).
+ENV ASPNETCORE_HTTP_PORTS=8080 \
+    ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
+    Audios__Ruta=/app/datos/audios
+COPY --from=build /app/publish .
+COPY --from=pwa /pwa/dist ./wwwroot
+# Solo los audios certificados (MP3 + certificacion.json); los crudos nunca entran
+COPY datos/audios/certificados/ /app/datos/audios/certificados/
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Makoto.Api.dll"]

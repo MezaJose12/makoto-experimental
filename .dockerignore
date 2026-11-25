@@ -1,3 +1,4 @@
+# Lo que NUNCA entra en una imagen de Docker (local ni Render)
 .git
 .github
 .vs
@@ -7,9 +8,15 @@
 **/TestResults
 **/*.user
 backend/Makoto.Tests
-frontend
 docs
-.env
-**/appsettings.*.local.json
 tools
 datos/audios/crudos
+# T2-18: ningún archivo .env (secretos locales) ni certificados privados llega a la imagen
+**/.env
+**/.env.*
+**/*.pem
+**/*.pfx
+**/appsettings.*.local.json
+# T2-18: la PWA sí entra (Dockerfile.render la compila), pero sin dependencias ni compilaciones locales
+**/node_modules
+frontend/makoto-pwa/dist

@@ -3,6 +3,11 @@ import { sesiones, ApiError } from '../../services/api.js'
 
 const VERSION_CONSENTIMIENTO = 'v1-borrador'
 
+// T2-18: en Render la API exige el código del estudio (Estudio__CodigoAcceso). Se entrega a los
+// participantes dentro del enlace o QR del laboratorio: https://<servicio>.onrender.com/?codigo=XXXX
+// No se escribe en el código de la PWA (sería público); se lee del enlace al abrir la página.
+const leerCodigoAcceso = () => new URLSearchParams(window.location.search).get('codigo') ?? undefined
+
 // Paso 1 del flujo del estudiante: consentimiento → POST /api/sesiones.
 // El escenario y el reproductor bloqueado se construyen en T2-07.
 export default function ExperimentoView() {
@@ -12,11 +17,13 @@ export default function ExperimentoView() {
   async function comenzar() {
     setEstado({ tipo: 'cargando' })
     try {
-      const sesion = await sesiones.iniciar(VERSION_CONSENTIMIENTO)
+      const sesion = await sesiones.iniciar(VERSION_CONSENTIMIENTO, leerCodigoAcceso())
       setEstado({ tipo: 'ok', sesion })
     } catch (e) {
       const pendiente = e instanceof ApiError && e.status === 501
-      setEstado({ tipo: pendiente ? 'pendiente' : 'error', mensaje: e.message })
+      // T2-18: 403 = falta el código del estudio o es incorrecto (enlace incompleto)
+      const sinCodigo = e instanceof ApiError && e.status === 403
+      setEstado({ tipo: pendiente ? 'pendiente' : sinCodigo ? 'sin-codigo' : 'error', mensaje: e.message })
     }
   }
 
@@ -33,6 +40,7 @@ export default function ExperimentoView() {
       </button>
       {estado.tipo === 'ok' && <p role="status">Sesión creada: {estado.sesion.sesionId}</p>}
       {estado.tipo === 'pendiente' && <p role="status" className="aviso">La API respondió: {estado.mensaje}</p>}
+      {estado.tipo === 'sin-codigo' && <p role="alert" className="error">El enlace no tiene un código de estudio válido. Pida el enlace correcto a quien coordina la sesión.</p>}
       {estado.tipo === 'error' && <p role="alert" className="error">No se pudo conectar con la API: {estado.mensaje}</p>}
     </section>
   )
