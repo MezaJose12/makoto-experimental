@@ -12,3 +12,4 @@ docs
 .env
 **/appsettings.*.local.json
 tools
+datos/audios/crudos

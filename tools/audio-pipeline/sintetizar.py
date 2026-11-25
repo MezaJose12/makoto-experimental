@@ -46,7 +46,7 @@ class Celda:
 class Config:
     idioma: str
     formato_salida: str
-    velocidad: str
+    velocidad: dict[str, str]                    # por género: iguala la duración entre voces
     tolerancia_hz: float
     precision_hz: float
     max_intentos: int
@@ -65,7 +65,8 @@ def cargar_config(ruta: Path = RAIZ / "config.json") -> Config:
     config = Config(
         idioma=datos["idioma"],
         formato_salida=datos["formatoSalida"],
-        velocidad=datos["velocidad"],
+        velocidad=datos["velocidad"] if isinstance(datos["velocidad"], dict)
+            else {g: datos["velocidad"] for g in datos["voces"]},
         tolerancia_hz=float(datos["toleranciaHz"]),
         precision_hz=float(datos["precisionHz"]),
         max_intentos=int(datos["maxIntentos"]),
@@ -77,6 +78,8 @@ def cargar_config(ruta: Path = RAIZ / "config.json") -> Config:
     for celda in config.celdas:
         if celda.genero not in config.voces:
             raise ValueError(f"{celda.codigo}: no hay voz configurada para '{celda.genero}'.")
+        if celda.genero not in config.velocidad:
+            raise ValueError(f"{celda.codigo}: no hay velocidad configurada para '{celda.genero}'.")
         if config.toca_banda_ambigua(celda.f0_objetivo_hz):
             raise ValueError(f"{celda.codigo}: {celda.f0_objetivo_hz} Hz toca la banda ambigua {config.banda_ambigua_hz} Hz.")
     return config
@@ -240,8 +243,8 @@ def comando_generar(config: Config, solo: str | None) -> int:
         destino = SALIDA / f"{celda.codigo.lower()}.wav"
         print(f"→ {celda.codigo}: objetivo {celda.f0_objetivo_hz:.0f} Hz con {voz}")
 
-        def sintetizar(desp: int, voz=voz, destino=destino) -> Path:
-            ssml = construir_ssml(texto, voz, config.idioma, desp, config.velocidad)
+        def sintetizar(desp: int, voz=voz, destino=destino, velocidad=config.velocidad[celda.genero]) -> Path:
+            ssml = construir_ssml(texto, voz, config.idioma, desp, velocidad)
             return cliente.sintetizar(ssml, config.formato_salida, destino)
 
         natural = tono_natural.get(celda.genero)

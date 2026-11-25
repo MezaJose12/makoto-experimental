@@ -46,11 +46,13 @@ builder.Services.AddProblemDetails();   // errores en formato estándar, sin det
 
 var app = builder.Build();
 
-// ── Migraciones: crea o actualiza las tablas al arrancar (local, Docker y Neon) ──
+// ── Migraciones y certificación de audios (local, Docker y Neon) ──
 if (app.Configuration.GetValue("Database:AplicarMigraciones", true))
 {
     using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<MakotoDbContext>().Database.MigrateAsync();
+    var db = scope.ServiceProvider.GetRequiredService<MakotoDbContext>();
+    await db.Database.MigrateAsync();
+    await SincronizadorCertificacion.SincronizarAsync(db, rutaAudios, app.Logger);
 }
 
 if (app.Environment.IsDevelopment())

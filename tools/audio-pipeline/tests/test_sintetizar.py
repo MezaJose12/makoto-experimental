@@ -35,6 +35,17 @@ def test_la_configuracion_del_repositorio_es_valida():
     assert len(config.celdas) == 6
     assert {c.genero for c in config.celdas} == set(config.voces)
 
+def test_velocidad_por_voz_y_compatibilidad_con_un_solo_valor(tmp_path):
+    config = s.cargar_config()
+    assert config.velocidad == {"Femenino": "-7%", "Masculino": "+7%"}
+    assert 'rate="-7%"' in s.construir_ssml("x", "v", "es-EC", 0, config.velocidad["Femenino"])
+
+    datos = json.loads((s.RAIZ / "config.json").read_text(encoding="utf-8"))
+    datos["velocidad"] = "0%"                       # el formato anterior sigue funcionando
+    ruta = tmp_path / "config.json"
+    ruta.write_text(json.dumps(datos), encoding="utf-8")
+    assert s.cargar_config(ruta).velocidad == {"Femenino": "0%", "Masculino": "0%"}
+
 
 def test_rechaza_un_objetivo_en_la_banda_ambigua(tmp_path):
     datos = json.loads((s.RAIZ / "config.json").read_text(encoding="utf-8"))
