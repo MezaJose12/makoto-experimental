@@ -152,10 +152,18 @@ Al ser el mismo origen, no hace falta CORS ni escribir la URL de la API en la PW
 ### Primer despliegue
 
 1. **Neon:** en la rama **producción**, Connect → *Pooled connection* → copie la URI.
-2. **Render:** New → Blueprint → repositorio `makoto-experimental`. Render lee `render.yaml` y pide:
-   - `DATABASE_URL`: la URI de producción del paso 1.
-   - `Estudio__CodigoAcceso`: un código para los participantes, por ejemplo de 8 o más caracteres sin espacios.
-   - `Admin__ClaveTemporal` se genera sola. Consúltela en el servicio → Environment.
+2. **Render** (los cambios de T2-18 deben estar ya en `main` en GitHub, porque Render lee `render.yaml` desde allí):
+   1. Entre a dashboard.render.com. Si no lo hizo antes, conecte GitHub: Account Settings → Git → GitHub → Connect y dé acceso al repositorio `makoto-experimental`.
+   2. Pulse **New +** (arriba a la derecha) → **Blueprint**.
+   3. Elija el repositorio `MezaJose12/makoto-experimental` → **Connect**.
+   4. Escriba el nombre del Blueprint (`makoto`), deje la rama `main` y la ruta `render.yaml`.
+   5. Render muestra el servicio `makoto-experimental` (Docker, Free, Ohio) y pide las variables con `sync: false`:
+      - `DATABASE_URL`: la URI de producción del paso 1.
+      - `Estudio__CodigoAcceso`: un código para los participantes, por ejemplo de 8 o más caracteres sin espacios.
+      - `Admin__ClaveTemporal` no se pide: Render la genera. Después la verá en el servicio → **Environment** → ojo junto al valor.
+   6. **Deploy Blueprint**. El primer despliegue tarda unos 5–10 min (compila la PWA y .NET). Siga el progreso en el servicio → **Logs**.
+   7. Si el nombre `makoto-experimental` ya está ocupado, Render agrega un sufijo a la URL. La URL final aparece arriba en el servicio.
+   8. Para cambiar una variable después: servicio → Environment → Edit → Save, rebuild and deploy. No la edite en `render.yaml`.
 3. Espere a que termine el despliegue. El log debe mostrar la migración aplicada y «Audios certificados: 6 de 6», sin avisos de `Estudio:CodigoAcceso` ni de `Admin:ClaveTemporal`.
 4. Compruebe:
    - `https://<servicio>.onrender.com/health` → `Healthy`
