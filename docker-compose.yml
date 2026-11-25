@@ -30,6 +30,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-makoto};Username=${POSTGRES_USER:-makoto};Password=${POSTGRES_PASSWORD}"
+      # T2-06: para la revisión «contra Neon» (REV-TEC 03). Si NEON_DATABASE_URL tiene valor en el .env,
+      # la API usa Neon en lugar del PostgreSQL local (DATABASE_URL tiene prioridad). Vacío = PostgreSQL local.
+      DATABASE_URL: ${NEON_DATABASE_URL:-}
       Audios__Ruta: /app/datos/audios
       Cors__Origenes__0: http://localhost:5173
       Admin__ClaveTemporal: ${ADMIN_CLAVE_TEMPORAL:-}

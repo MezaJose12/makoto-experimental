@@ -28,7 +28,8 @@ makoto-experimental/
 ├── frontend/makoto-pwa/        # React PWA (Vite): experimento, test y dashboard
 ├── datos/audios/certificados/  # Los 6 audios certificados (T2-03 y T2-04)
 ├── tools/audio-pipeline/       # Síntesis de los 6 audios con Azure Speech + medición de F0 con Praat (T2-03)
-├── docs/                       # Arquitectura y planificación
+├── tools/revision/             # Script de concurrencia y limpieza para las revisiones técnicas (T2-06)
+├── docs/                       # Arquitectura, planificación y guiones de revisión (docs/revisiones)
 └── .github/workflows/ci.yml    # Compilación, pruebas y prueba de Docker Compose
 ```
 
@@ -114,6 +115,22 @@ curl.exe -X POST -H "Content-Type: application/json" -d "{\"consentimientoAcepta
 
 Si `ESTUDIO_CODIGO_ACCESO` tiene un valor en el `.env`, agregue `"codigoAcceso":"<ese valor>"` al JSON; si no, la API responde `403`.
 
+## Probar contra Neon y prueba de concurrencia (T2-06 · REV-TEC 03)
+
+Guion completo de la revisión: [docs/revisiones/REV-TEC-03.md](docs/revisiones/REV-TEC-03.md).
+
+1. En el `.env`, defina `NEON_DATABASE_URL` con la URI de la rama **desarrollo** de Neon. Vacío = PostgreSQL local.
+2. `docker compose up --build`: la API aplica la migración en Neon y sincroniza la certificación de los audios.
+3. Envíe 30 sesiones simultáneas y compruebe el balanceo y el audio:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\revision\prueba-asignador.ps1 -ClaveAdmin <ADMIN_CLAVE_TEMPORAL> -Sesiones 30
+```
+
+4. Borre las sesiones de prueba con `tools/revision/limpiar-pruebas.sql` (SQL Editor de Neon o psql) y vacíe de nuevo `NEON_DATABASE_URL`.
+
+El script funciona en Windows PowerShell 5.1 y en PowerShell 7. Envía las solicitudes en paralelo con `HttpClient` y sube el límite de 2 conexiones por servidor que trae .NET Framework; sin ese cambio, las solicitudes saldrían de dos en dos y no se probaría la concurrencia. Las sesiones de prueba usan `consentimientoVersion = "prueba-rev-tec-03"` (y las de la CI, `"ci"`) para poder separarlas del estudio real.
+
 ## Audios: síntesis y certificación (T2-03 y T2-04)
 
 Se ejecuta desde `tools/audio-pipeline` (necesita Python 3.12 y una clave de Azure Speech):
@@ -180,6 +197,7 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 | Variable | Uso | Ejemplo |
 | --- | --- | --- |
 | `DATABASE_URL` | URI de PostgreSQL (Neon). Se convierte a Npgsql con SSL. | `postgresql://usuario:clave@host/neondb?sslmode=require` |
+| `NEON_DATABASE_URL` (solo `.env`) | Docker Compose la pasa como `DATABASE_URL`, para probar contra la rama desarrollo de Neon | (secreto) |
 | `ConnectionStrings__Default` | Cadena de Npgsql, si no hay `DATABASE_URL` | `Host=postgres;Port=5432;…` |
 | `Audios__Ruta` | Carpeta de audios | `/app/datos/audios` |
 | `Cors__Origenes__0` | Origen permitido de la PWA | `http://localhost:5173` |
@@ -237,4 +255,10 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 | `curl.exe` en PowerShell: `'\' is an invalid start of a property name` | Use `Invoke-RestMethod` (ver «Probar la API desde Windows»). |
 | Azure: URL con `%22` o `ConnectionError` | Comillas o espacios en `set AZURE_SPEECH_REGION`. Escríbalo sin comillas ni espacios. |
 | `pytest`: `file or directory not found: tests` | Ejecútelo desde `tools/audio-pipeline`. |
+| Neon: `relation "…" already exists` al migrar | La rama tiene tablas creadas antes con `EnsureCreatedAsync()` y sin historial de migraciones. En la rama **desarrollo**, Neon → Branches → Reset from parent, o en el SQL Editor `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`. Luego vuelva a arrancar la API. |
+| La primera solicitud a Neon tarda o falla una vez | Arranque en frío de Neon: la base se apaga por inactividad. `EnableRetryOnFailure` reintenta. Antes de una demostración, abra `/health/ready`. |
+| PowerShell: «la ejecución de scripts está deshabilitada» | Ejecute el script con `powershell -ExecutionPolicy Bypass -File …`. Solo afecta a esa ejecución. |
+| Las cuotas del Dashboard incluyen sesiones de prueba | Ejecute `tools/revision/limpiar-pruebas.sql`. |
 | Certificación rechazada por duración | Ajuste `velocidad` por voz en `config.json` y repita `generar` y `certificar`. |
+
+Para la revisión con el Tutor 2, la misma verificación contra Neon: ver [docs/revisiones/REV-TEC-03.md](docs/revisiones/REV-TEC-03.md), sección 5.
