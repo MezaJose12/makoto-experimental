@@ -2,7 +2,7 @@
 
 Aplicación para evaluar cómo el género y la frecuencia fundamental (F0) de la voz de un chatbot de apoyo emocional influyen en la empatía que perciben estudiantes universitarios (diseño factorial 2 × 3). Universidad de las Fuerzas Armadas ESPE · Ingeniería en TIC.
 
-> Estado: **T2-05 · Asignador de condiciones**. Ya están el modelo de datos (T2-02), los 6 audios sintetizados (T2-03) y certificados (T2-04), y la asignación balanceada de la celda 2×3 con entrega del audio (T2-05). Faltan la lógica del Test (T2-08) y de la Telemetría (T2-10).
+> Estado: **T2-07 · Experimento intra-sujeto con reproductor bloqueado** (sigue T2-19 · pruebas en móviles y T2-08 · Test). Ya están el modelo de datos (T2-02), los 6 audios sintetizados y certificados (T2-03 y T2-04), el Asignador (T2-05), Neon (T2-17) y el despliegue en Render (T2-18). Cada participante escucha todas las voces en orden contrabalanceado (D-02). Faltan el Test (T2-08), la Telemetría (T2-10) y el panel con generación automática (D-16).
 
 ## Estructura
 
@@ -31,9 +31,14 @@ makoto-experimental/
 ├── datos/audios/certificados/  # Los 6 audios certificados (T2-03 y T2-04)
 ├── tools/audio-pipeline/       # Síntesis de los 6 audios con Azure Speech + medición de F0 con Praat (T2-03)
 ├── tools/revision/             # Script de concurrencia y limpieza para las revisiones técnicas (T2-06)
-├── docs/                       # Arquitectura, planificación y guiones de revisión (docs/revisiones)
-└── .github/workflows/ci.yml    # Compilación, pruebas y prueba de Docker Compose
+├── tools/verificar.ps1         # Verificación local completa (reemplaza a GitHub Actions, D-14)
+├── .githooks/pre-commit        # Bloquea commits con .env o contraseñas (D-14)
+├── CLAUDE.md                   # Contexto y reglas para Claude Code
+├── docs/                       # Mapa del proyecto, decisiones, instrumentos, pruebas y guiones de revisión
+└── .github/workflows/ci.yml    # CI de GitHub (deshabilitada por ahora: ver «Verificación sin GitHub Actions»)
 ```
+
+> Detalle de **cada** archivo, su tarea y su estado: [docs/MAPA_DEL_PROYECTO.md](docs/MAPA_DEL_PROYECTO.md).
 
 ## Requisitos
 
@@ -73,9 +78,10 @@ Tablas (snake_case): `condiciones_vocales`, `sesiones_experimentales`, `datos_pa
 
 | Método y ruta | Quién lo usa | Estado |
 | --- | --- | --- |
-| `POST /api/sesiones` | Experimento | Implementado (T2-05) · asigna la celda 2×3 menos ocupada |
-| `GET /api/sesiones/{id}` | Experimento y Test | Implementado |
-| `GET /api/sesiones/{id}/audio` | Reproductor | Implementado (T2-05) · MP3 certificado de la sesión |
+| `POST /api/sesiones` | Experimento | Implementado (T2-05, T2-07) · asigna un orden contrabalanceado de todas las voces certificadas |
+| `GET /api/sesiones/{id}` | Experimento y Test | Implementado · pistas y cuántas escuchó (para retomar al recargar) |
+| `GET /api/sesiones/{id}/pistas/{indice}/audio` | Reproductor | Implementado (T2-07) · MP3 de la voz en esa posición; solo la siguiente a las ya escuchadas |
+| `POST /api/sesiones/{id}/pistas/{indice}/fin` | Reproductor | Implementado (T2-07) · la pista terminó: desbloquea la siguiente y renueva la reserva |
 | `POST /api/sesiones/{id}/participante` | Test | Contrato · T2-08 |
 | `POST /api/sesiones/{id}/eventos` | Reproductor | Contrato · T2-10 |
 | `POST /api/sesiones/{id}/evaluacion` | Test | Contrato · T2-08 |
@@ -84,7 +90,50 @@ Tablas (snake_case): `condiciones_vocales`, `sesiones_experimentales`, `datos_pa
 
 Los endpoints pendientes responden `501` con un ProblemDetails que indica la tarea.
 
-Respuestas de `POST /api/sesiones`: `201` con `sesionId`, `estado` y `audioUrl`; `400` sin consentimiento; `403` si el código del estudio falta o es incorrecto; `503` si no hay audios certificados. Respuestas de `GET /api/sesiones/{id}/audio`: `200 audio/mpeg`; `404` si la sesión no existe; `409` si ya terminó o expiró; `503` si su audio no está certificado.
+Respuestas de `POST /api/sesiones`:
+- `201` con `sesionId`, `estado`, `pistas` (`indice`, `etiqueta` «Voz k», `audioUrl`) y `pistasEscuchadas`;
+- `400` sin consentimiento;
+- `403` si el código del estudio falta o es incorrecto;
+- `503` si no hay audios certificados.
+
+Respuestas de `GET …/pistas/{indice}/audio`:
+- `200 audio/mpeg`;
+- `404` si la sesión o la pista no existen;
+- `409` si la sesión terminó o expiró, o si la pista está bloqueada porque falta terminar la anterior;
+- `503` si el audio no está certificado.
+
+## Experimento intra-sujeto (T2-07 · D-02)
+
+Cada participante escucha **todas** las voces certificadas, en el orden de una fila de un **cuadrado latino de Williams** (`Services/CuadradoLatino.cs`):
+- cada voz aparece por igual en cada posición;
+- cada par «voz A seguida de voz B» aparece el mismo número de veces, lo que controla el efecto de arrastre;
+- con 6 voces hay 6 órdenes; con un número impar de voces, el doble.
+
+El Asignador de T2-05 elige la fila menos usada (empates al azar), con el mismo candado y la misma expiración. `condicion_vocal_id` guarda la **primera** voz del orden; por eso las cuotas del Dashboard siguen balanceadas (cuentan la voz escuchada primero).
+
+El flujo del participante sigue el Figma (P1–P3):
+1. consentimiento;
+2. prueba de audio y situación;
+3. escucha de cada voz;
+4. evaluación de cada voz (T2-08).
+
+El **reproductor bloqueado** (`ReproductorBloqueado.jsx`):
+- no muestra controles nativos;
+- si algo intenta adelantar, vuelve al punto máximo escuchado (retroceder sí se permite);
+- si algo cambia la velocidad, la devuelve a 1×;
+- quita «adelantar» y «siguiente» de la pantalla de bloqueo del celular;
+- activa «Evaluar esta voz» solo al llegar al final.
+
+El servidor también lo impide: no entrega una pista hasta que la anterior se marcó como terminada. Si el estudiante recarga la página, continúa en la misma voz (la sesión se guarda solo en esa pestaña).
+
+Pruebas en celulares y navegadores (T2-19): matriz de casos y planes B en [docs/pruebas/T2-19-moviles.md](docs/pruebas/T2-19-moviles.md).
+
+Migración de este cambio (columnas `orden_condiciones integer[]`, `fila_orden`, `pistas_escuchadas`; ya generada como `20261126193140_OrdenIntraSujeto`):
+
+```bash
+cd backend/Makoto.Api
+dotnet ef migrations add OrdenIntraSujeto
+```
 
 ## Asignador de condiciones (T2-05)
 
@@ -174,7 +223,7 @@ Al ser el mismo origen, no hace falta CORS ni escribir la URL de la API en la PW
 
 El enlace para los participantes (o su QR) es `https://<servicio>.onrender.com/?codigo=<Estudio__CodigoAcceso>`. Sin el código, la API responde `403` y nadie ajeno al laboratorio puede llenar las cuotas.
 
-Con `autoDeployTrigger: checksPass`, Render despliega cada push a `main` solo cuando la CI termina en verde.
+Render **no despliega solo** (`autoDeployTrigger: off`), porque sin GitHub Actions nadie comprueba el código antes. Para desplegar: `tools\verificar.ps1` en verde → `git push` → Render → **Manual Deploy → Deploy latest commit**. Así un push con errores nunca llega a la URL que usan los participantes.
 
 Probar la imagen de Render en su equipo, contra el PostgreSQL local:
 
@@ -241,9 +290,9 @@ python certificar.py             # datos/audios/certificados/*.mp3 + certificaci
 - El F0 se calibra por iteraciones: se sintetiza con `<prosody pitch>`, se mide con Praat y se corrige hasta quedar a ±5 Hz del objetivo.
 - La certificación iguala la intensidad a 70 dB, exige que las 6 pistas duren lo mismo (±1 s) y guarda el SHA-256 de cada MP3. La API recalcula las huellas al arrancar y solo asigna las celdas que coinciden.
 - Luis habla más lento que Andrea (37,25 s frente a 32,21 s con el mismo guion), por eso `config.json` usa una velocidad por voz: Femenino `-7%` y Masculino `+7%`.
-- Si cambia `guion.txt` (guion validado de T1-04), vuelva a ejecutar `generar` y `certificar` y suba los MP3 nuevos y `certificacion.json`.
+- El guion definitivo (D-05, 25/11) y sus criterios están en [docs/decisiones.md](docs/decisiones.md). Cada vez que cambie `guion.txt`, vuelva a ejecutar `generar` y `certificar`, suba los 6 MP3 nuevos y `certificacion.json`, y vuelva a desplegar en Render. La API solo asigna las celdas cuya huella coincide.
 
-Resultado aprobado (25/11/2026):
+Resultado aprobado (25/11/2026, con el guion borrador de 87 palabras; se repite con el guion definitivo):
 
 | Celda | Objetivo | F0 medido | Duración |
 | --- | --- | --- | --- |
@@ -296,6 +345,30 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 | `Seguridad__AdminSolicitudesPorMinuto` | Límite de solicitudes al panel por IP y minuto (`429` al superarlo) | `30` |
 | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Lo fija `Dockerfile.render`: la API reconoce el HTTPS y la IP real detrás del proxy de Render | `true` |
 
+## Verificación sin GitHub Actions (D-14)
+
+GitHub Actions está deshabilitado en la cuenta universitaria, así que la CI no corre en GitHub. Hasta resolverlo, la misma verificación se ejecuta en local:
+
+```powershell
+git config core.hooksPath .githooks                                     # una vez por clon: control de secretos en cada commit
+powershell -ExecutionPolicy Bypass -File tools\verificar.ps1            # antes de cada push y de cada despliegue
+powershell -ExecutionPolicy Bypass -File tools\verificar.ps1 -SinDocker # versión rápida (sin Docker)
+```
+
+`verificar.ps1` revisa:
+1. que no haya secretos en los archivos versionados;
+2. `dotnet test`;
+3. lint y compilación de la PWA;
+4. `pytest` del pipeline de audio;
+5. Docker Compose desde cero, en un proyecto aparte que no borra sus datos locales: salud, 6 condiciones, 60 sesiones simultáneas → 10 por celda y audio MP3;
+6. la compilación de `Dockerfile.render`.
+
+Termina con un resumen y «Todo en verde» o «NO suba ni despliegue». Antes del paso 5, detenga su entorno (`docker compose stop`), porque usa el puerto 8080.
+
+El hook `pre-commit` rechaza el commit si incluye `.env`, certificados (`.pem`, `.pfx`, `.key`) o una URI o contraseña de base de datos. Los ejemplos `usuario:clave@` sí se permiten.
+
+Guarde la salida de `verificar.ps1` (captura o `... | Tee-Object verificacion.txt`) como evidencia en cada revisión técnica, en lugar de la pestaña Actions.
+
 ## Pruebas
 
 ```bash
@@ -312,7 +385,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `GET /health` responde `200 Healthy`.
 - [ ] `GET /health/ready` responde `200` con `postgresql` y `audios` en `Healthy`.
 - [ ] `dotnet test` pasa todas las pruebas.
-- [ ] La CI de GitHub (pestaña Actions) termina en verde.
+- [ ] La CI termina en verde (mientras Actions esté deshabilitado: `tools\verificar.ps1` en verde).
 - [ ] Ningún secreto en el repositorio (`.env` y contraseñas fuera de Git).
 
 ## Verificación de REV-TEC 02
@@ -321,7 +394,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `GET /api/admin/condiciones` con `X-Admin-Key` devuelve las 6 celdas; sin la clave, `401`.
 - [ ] `/openapi/v1.json` muestra todos los endpoints con sus esquemas.
 - [ ] La PWA (`npm run dev`) muestra las cuotas en el Dashboard y el aviso 501 en el Experimento.
-- [ ] La CI de GitHub termina en verde (back-end, PWA y Docker Compose).
+- [ ] La CI termina en verde: back-end, PWA y Docker Compose (o `tools\verificar.ps1`).
 
 ## Verificación de REV-TEC 03
 
@@ -329,7 +402,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `POST /api/sesiones` responde `201` con `sesionId` y `audioUrl`, y el audio se reproduce.
 - [ ] Sin consentimiento responde `400`; con un código de estudio incorrecto, `403`.
 - [ ] El Dashboard muestra la sesión «en curso» en su celda.
-- [ ] La CI muestra «En curso por celda: [10, 10, 10, 10, 10, 10]».
+- [ ] 60 sesiones simultáneas → 10 por celda (`tools\verificar.ps1`, paso 5).
 
 ## Problemas frecuentes
 
@@ -352,7 +425,13 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 | La PWA en Render dice «El enlace no tiene un código de estudio válido» | Abra la URL con `?codigo=<código>`, el mismo valor de `Estudio__CodigoAcceso`. |
 | El panel responde `429 Too Many Requests` | Se superó el límite de intentos por minuto. Espere un minuto. |
 | La primera visita a Render tarda unos 50 s | El plan gratuito duerme el servicio tras 15 min sin uso. Ábralo unos minutos antes de cada sesión o demostración, junto con `/health/ready` para despertar Neon. |
+| La pestaña Actions de GitHub no ejecuta nada | Actions está deshabilitado en la cuenta universitaria (D-14). Use `tools\verificar.ps1`. |
+| `verificar.ps1`: «El puerto 8080 está en uso» | Detenga su entorno con `docker compose stop` y repita. |
+| `git commit`: «pre-commit: … puede contener secretos» | El hook detectó un `.env` o una contraseña. Quítelo del commit (`git restore --staged <archivo>`) y guarde el valor solo en `.env` o en Render. |
 | La CI falla en «Crear .env de prueba» | `.env.example` debe estar en Git (no en `.gitignore`) y sin valores reales. |
+| `dotnet ef`: «No project was found» | El comando se ejecutó fuera de `backend/Makoto.Api`. Desde la raíz del repositorio: `dotnet ef migrations add <Nombre> --project backend/Makoto.Api`. |
+| `GET …/pistas/2/audio` responde `409 Pista bloqueada` | Es lo esperado: la voz 2 se desbloquea cuando la PWA avisa que la voz 1 terminó (`POST …/pistas/1/fin`). |
+| Tras actualizar a T2-07, la API falla con `column s.orden_condiciones does not exist` | Falta la migración: `dotnet ef migrations add OrdenIntraSujeto` en `backend/Makoto.Api` y volver a arrancar. |
 | Certificación rechazada por duración | Ajuste `velocidad` por voz en `config.json` y repita `generar` y `certificar`. |
 
 Para la revisión con el Tutor 2, la misma verificación contra Neon: ver [docs/revisiones/REV-TEC-03.md](docs/revisiones/REV-TEC-03.md), sección 5.
@@ -365,3 +444,12 @@ Para la revisión con el Tutor 2, la misma verificación contra Neon: ver [docs/
 - [ ] El audio se reproduce desde la URL de Render.
 - [ ] En el log de Render no aparecen avisos de seguridad.
 - [ ] La búsqueda de secretos en el historial solo encuentra valores de ejemplo.
+
+## Verificación de T2-07 (REV-TEC 04)
+
+- [ ] Migración `OrdenIntraSujeto` aplicada (local y Neon): la API arranca sin errores.
+- [ ] `tools\verificar.ps1` en verde, con 60 sesiones → 10 por voz en el paso 5.
+- [ ] El flujo consentimiento → prueba de audio → situación → 6 voces funciona en local y en Render.
+- [ ] No se puede adelantar ni cambiar la velocidad, y «Evaluar esta voz» se activa solo al terminar.
+- [ ] Al recargar la página se retoma la misma voz.
+- [ ] `GET …/pistas/3/audio` sin haber terminado la 2 → `409 Pista bloqueada`.

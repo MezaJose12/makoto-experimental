@@ -107,12 +107,13 @@ jobs:
             -d '{"consentimientoAceptado":true,"consentimientoVersion":"ci"}' http://localhost:8080/api/sesiones
           curl -fsS -H "X-Admin-Key: cambie_esta_clave_admin" http://localhost:8080/api/admin/cuotas > cuotas.json
           python3 -c "import json; v=[c['enCurso'] for c in json.load(open('cuotas.json'))]; print('En curso por celda:', v); assert v == [10]*6, v"
-      - name: "T2-05: el audio de una sesión se entrega como MP3"
+      - name: "T2-05/T2-07: el audio de la primera pista se entrega como MP3"
         run: |
           id=$(curl -fsS -X POST -H "Content-Type: application/json" \
             -d '{"consentimientoAceptado":true,"consentimientoVersion":"ci"}' http://localhost:8080/api/sesiones \
             | python3 -c "import sys, json; print(json.load(sys.stdin)['sesionId'])")
-          tipo=$(curl -fsS -o audio.mp3 -w "%{content_type}" http://localhost:8080/api/sesiones/$id/audio)
+          # T2-07: el audio se pide por pista (la 1 siempre está desbloqueada)
+          tipo=$(curl -fsS -o audio.mp3 -w "%{content_type}" http://localhost:8080/api/sesiones/$id/pistas/1/audio)
           echo "Tipo: $tipo · $(wc -c < audio.mp3) bytes"; test "$tipo" = "audio/mpeg"
       - name: Apagar
         if: always()
