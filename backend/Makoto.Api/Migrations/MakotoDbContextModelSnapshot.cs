@@ -410,6 +410,10 @@ namespace Makoto.Api.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("estado");
 
+                    b.Property<int>("FilaOrden")
+                        .HasColumnType("integer")
+                        .HasColumnName("fila_orden");
+
                     b.Property<DateTime?>("FinUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("fin_utc");
@@ -417,6 +421,15 @@ namespace Makoto.Api.Migrations
                     b.Property<DateTime>("InicioUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("inicio_utc");
+
+                    b.PrimitiveCollection<int[]>("OrdenCondiciones")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("orden_condiciones");
+
+                    b.Property<int>("PistasEscuchadas")
+                        .HasColumnType("integer")
+                        .HasColumnName("pistas_escuchadas");
 
                     b.Property<DateTime>("ReservadaHastaUtc")
                         .HasColumnType("timestamp with time zone")
@@ -428,6 +441,8 @@ namespace Makoto.Api.Migrations
                         .IsUnique();
 
                     b.HasIndex("CondicionVocalId", "Estado");
+
+                    b.HasIndex("FilaOrden", "Estado");
 
                     b.ToTable("sesiones_experimentales", (string)null);
                 });

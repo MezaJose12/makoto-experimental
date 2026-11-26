@@ -96,7 +96,8 @@ if ($spread -gt $limite)   { Write-Host "FALLO: celdas desbalanceadas (diferenci
 # ── Entrega del audio ──
 if ($primera) {
     $sesion = $primera.Result.Content.ReadAsStringAsync().Result | ConvertFrom-Json
-    $audio = $cliente.GetAsync("$Api$($sesion.audioUrl)").Result
+    # T2-07: cada sesión trae todas las pistas; se prueba la primera (las demás se desbloquean al terminar la anterior)
+    $audio = $cliente.GetAsync("$Api$($sesion.pistas[0].audioUrl)").Result
     $tipo = $audio.Content.Headers.ContentType.MediaType
     $bytes = $audio.Content.ReadAsByteArrayAsync().Result.Length
     Write-Host ("Audio de la sesión {0}: HTTP {1}, {2}, {3:N0} bytes" -f $sesion.sesionId, [int]$audio.StatusCode, $tipo, $bytes)

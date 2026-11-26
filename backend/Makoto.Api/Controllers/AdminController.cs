@@ -32,6 +32,8 @@ public class AdminController(MakotoDbContext db) : ControllerBase
     [HttpGet("cuotas")]
     [ProducesResponseType<IReadOnlyList<CuotaResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    // T2-07: con el diseño intra-sujeto cuenta las sesiones por la voz que escucharon PRIMERO
+    // (CondicionVocalId = primera del orden). Con el cuadrado latino deben quedar iguales.
     public async Task<IReadOnlyList<CuotaResponse>> Cuotas(CancellationToken ct) =>
         await db.Condiciones.AsNoTracking()
             .OrderBy(c => c.Id)

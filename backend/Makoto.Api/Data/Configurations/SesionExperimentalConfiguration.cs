@@ -21,5 +21,10 @@ public class SesionExperimentalConfiguration : IEntityTypeConfiguration<SesionEx
 
         // Para contar cuotas por celda y estado rápidamente (Asignador, T2-05)
         b.HasIndex(s => new { s.CondicionVocalId, s.Estado });
+
+        // T2-07: orden de las voces como arreglo nativo de PostgreSQL (integer[])
+        b.Property(s => s.OrdenCondiciones).IsRequired();
+        // T2-07: para contar cuántas sesiones usan cada fila del cuadrado latino
+        b.HasIndex(s => new { s.FilaOrden, s.Estado });
     }
 }

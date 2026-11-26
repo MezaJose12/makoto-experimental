@@ -11,10 +11,16 @@ public sealed record IniciarSesionRequest(
     [Required, StringLength(20, MinimumLength = 1)] string ConsentimientoVersion,
     [StringLength(40)] string? CodigoAcceso);
 
-public sealed record IniciarSesionResponse(Guid SesionId, EstadoSesion Estado, string AudioUrl);
+// T2-07: el participante escucha todas las voces (D-02). Cada pista se identifica solo por su posición
+// («Voz 1», «Voz 2»…): la respuesta nunca revela género, frecuencia ni nombre del archivo.
+public sealed record PistaResponse(int Indice, string Etiqueta, string AudioUrl);
 
-/// <summary>GET /api/sesiones/{id}</summary>
-public sealed record EstadoSesionResponse(Guid SesionId, EstadoSesion Estado, bool Evaluada);
+public sealed record IniciarSesionResponse(
+    Guid SesionId, EstadoSesion Estado, IReadOnlyList<PistaResponse> Pistas, int PistasEscuchadas);
+
+/// <summary>GET /api/sesiones/{id} · para retomar si el estudiante recarga la página.</summary>
+public sealed record EstadoSesionResponse(
+    Guid SesionId, EstadoSesion Estado, IReadOnlyList<PistaResponse> Pistas, int PistasEscuchadas, bool Evaluada);
 
 /// <summary>POST /api/sesiones/{id}/participante · covariables.</summary>
 public sealed record DatosParticipanteRequest(

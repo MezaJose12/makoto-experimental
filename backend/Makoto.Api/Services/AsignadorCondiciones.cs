@@ -11,6 +11,11 @@ public sealed class EstimulosNoDisponiblesException()
     : Exception("No hay condiciones con audio certificado (ejecute la certificación de T2-04).");
 
 /// <summary>
+/// T2-07: con el diseño intra-sujeto (D-02) cada participante escucha TODAS las voces certificadas.
+/// El Asignador ya no elige una celda sino un ORDEN: la fila del cuadrado latino de Williams menos
+/// usada (empates al azar). Así cada voz aparece por igual en cada posición. La transacción, el
+/// candado y la expiración de reservas de T2-05 se mantienen.
+///
 /// T2-05 · Asignador de condiciones: decide qué voz escucha cada participante.
 /// Asigna la celda 2×3 con menos ocupación (sesiones completadas + reservas vigentes) y desempata
 /// al azar, de modo que las 6 celdas reciban la misma cantidad de participantes. Toda la operación
@@ -25,7 +30,8 @@ public class AsignadorCondiciones(MakotoDbContext db, IConfiguration configuraci
     // Sin 0/O ni 1/I/L: el código se lee y se dicta sin confusiones
     private const string AlfabetoCodigo = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-    private int ReservaMinutos => configuracion.GetValue("Estudio:ReservaMinutos", 30);
+    // T2-07: público para que el controlador renueve la reserva al terminar cada pista (la sesión dura ~25 min)
+    public int ReservaMinutos => configuracion.GetValue("Estudio:ReservaMinutos", 30);
 
     /// <summary>
     /// Si Estudio:CodigoAcceso está configurado, solo quien lo conoce (se entrega en el laboratorio)
@@ -61,27 +67,40 @@ public class AsignadorCondiciones(MakotoDbContext db, IConfiguration configuraci
                             && s.ReservadaHastaUtc < ahora)
                 .ExecuteUpdateAsync(u => u.SetProperty(s => s.Estado, EstadoSesion.Expirada), ct);
 
-            // 2) Ocupación de cada celda con audio certificado
-            var ocupacion = await db.Condiciones
+            // 2) T2-07: voces con audio certificado (las que escuchará el participante)
+            var certificadas = await db.Condiciones
                 .Where(c => c.Sha256 != null)
-                .Select(c => new
-                {
-                    c.Id,
-                    Ocupadas = c.Sesiones.Count(s => s.Estado == EstadoSesion.Completada
-                                                    || s.Estado == EstadoSesion.Iniciada
-                                                    || s.Estado == EstadoSesion.EnAudio)
-                })
-                .ToDictionaryAsync(x => x.Id, x => x.Ocupadas, ct);
+                .OrderBy(c => c.Id)
+                .Select(c => c.Id)
+                .ToArrayAsync(ct);
 
-            if (ocupacion.Count == 0)
+            if (certificadas.Length == 0)
                 throw new EstimulosNoDisponiblesException();
 
-            // 3) Celda menos ocupada; empate al azar
+            // 3) T2-07: ocupación de cada fila del cuadrado latino (solo sesiones con el mismo número de voces)
+            var filas = CuadradoLatino.Williams(certificadas.Length);
+            var n = certificadas.Length;
+            var usadas = await db.Sesiones
+                .Where(s => (s.Estado == EstadoSesion.Completada || s.Estado == EstadoSesion.Iniciada
+                             || s.Estado == EstadoSesion.EnAudio)
+                            && s.OrdenCondiciones.Length == n)
+                .GroupBy(s => s.FilaOrden)
+                .Select(g => new { Fila = g.Key, Total = g.Count() })
+                .ToDictionaryAsync(x => x.Fila, x => x.Total, ct);
+            var ocupacion = Enumerable.Range(0, filas.Count).ToDictionary(f => f, f => usadas.GetValueOrDefault(f));
+
+            // 4) Fila menos usada; empate al azar. Se traduce a ids de condición.
+            var fila = ElegirCondicion(ocupacion, Random.Shared);
+            var orden = filas[fila].Select(i => certificadas[i]).ToArray();
+
             var sesion = new SesionExperimental
             {
                 Id = Guid.CreateVersion7(),
                 CodigoParticipante = GenerarCodigoParticipante(),
-                CondicionVocalId = ElegirCondicion(ocupacion, Random.Shared),
+                CondicionVocalId = orden[0],
+                OrdenCondiciones = orden,
+                FilaOrden = fila,
+                PistasEscuchadas = 0,
                 Estado = EstadoSesion.Iniciada,
                 ConsentimientoVersion = consentimientoVersion,
                 ConsentimientoUtc = ahora,

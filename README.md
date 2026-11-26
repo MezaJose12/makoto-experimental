@@ -31,10 +31,8 @@ makoto-experimental/
 ├── datos/audios/certificados/  # Los 6 audios certificados (T2-03 y T2-04)
 ├── tools/audio-pipeline/       # Síntesis de los 6 audios con Azure Speech + medición de F0 con Praat (T2-03)
 ├── tools/revision/             # Script de concurrencia y limpieza para las revisiones técnicas (T2-06)
-├── tools/verificar.ps1         # Verificación local completa (reemplaza a GitHub Actions, D-14)
-├── .githooks/pre-commit        # Bloquea commits con .env o contraseñas (D-14)
-├── docs/                       # Arquitectura, planificación, decisiones, instrumentos y guiones de revisión
-└── .github/workflows/ci.yml    # CI de GitHub (deshabilitada por ahora: ver «Verificación sin GitHub Actions»)
+├── docs/                       # Arquitectura, planificación y guiones de revisión (docs/revisiones)
+└── .github/workflows/ci.yml    # Compilación, pruebas y prueba de Docker Compose
 ```
 
 ## Requisitos
@@ -176,7 +174,7 @@ Al ser el mismo origen, no hace falta CORS ni escribir la URL de la API en la PW
 
 El enlace para los participantes (o su QR) es `https://<servicio>.onrender.com/?codigo=<Estudio__CodigoAcceso>`. Sin el código, la API responde `403` y nadie ajeno al laboratorio puede llenar las cuotas.
 
-Render **no despliega solo** (`autoDeployTrigger: off`), porque sin GitHub Actions nadie comprueba el código antes. Para desplegar: `tools\verificar.ps1` en verde → `git push` → Render → **Manual Deploy → Deploy latest commit**. Así un push con errores nunca llega a la URL que usan los participantes.
+Con `autoDeployTrigger: checksPass`, Render despliega cada push a `main` solo cuando la CI termina en verde.
 
 Probar la imagen de Render en su equipo, contra el PostgreSQL local:
 
@@ -243,9 +241,9 @@ python certificar.py             # datos/audios/certificados/*.mp3 + certificaci
 - El F0 se calibra por iteraciones: se sintetiza con `<prosody pitch>`, se mide con Praat y se corrige hasta quedar a ±5 Hz del objetivo.
 - La certificación iguala la intensidad a 70 dB, exige que las 6 pistas duren lo mismo (±1 s) y guarda el SHA-256 de cada MP3. La API recalcula las huellas al arrancar y solo asigna las celdas que coinciden.
 - Luis habla más lento que Andrea (37,25 s frente a 32,21 s con el mismo guion), por eso `config.json` usa una velocidad por voz: Femenino `-7%` y Masculino `+7%`.
-- El guion definitivo (D-05, 25/11) y sus criterios están en [docs/decisiones.md](docs/decisiones.md). Cada vez que cambie `guion.txt`, vuelva a ejecutar `generar` y `certificar`, suba los 6 MP3 nuevos y `certificacion.json`, y vuelva a desplegar en Render. La API solo asigna las celdas cuya huella coincide.
+- Si cambia `guion.txt` (guion validado de T1-04), vuelva a ejecutar `generar` y `certificar` y suba los MP3 nuevos y `certificacion.json`.
 
-Resultado aprobado (25/11/2026, con el guion borrador de 87 palabras; se repite con el guion definitivo):
+Resultado aprobado (25/11/2026):
 
 | Celda | Objetivo | F0 medido | Duración |
 | --- | --- | --- | --- |
@@ -298,30 +296,6 @@ También puede definir la variable de entorno `DATABASE_URL` con la URI que entr
 | `Seguridad__AdminSolicitudesPorMinuto` | Límite de solicitudes al panel por IP y minuto (`429` al superarlo) | `30` |
 | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Lo fija `Dockerfile.render`: la API reconoce el HTTPS y la IP real detrás del proxy de Render | `true` |
 
-## Verificación sin GitHub Actions (D-14)
-
-GitHub Actions está deshabilitado en la cuenta universitaria, así que la CI no corre en GitHub. Hasta resolverlo, la misma verificación se ejecuta en local:
-
-```powershell
-git config core.hooksPath .githooks                                     # una vez por clon: control de secretos en cada commit
-powershell -ExecutionPolicy Bypass -File tools\verificar.ps1            # antes de cada push y de cada despliegue
-powershell -ExecutionPolicy Bypass -File tools\verificar.ps1 -SinDocker # versión rápida (sin Docker)
-```
-
-`verificar.ps1` revisa:
-1. que no haya secretos en los archivos versionados;
-2. `dotnet test`;
-3. lint y compilación de la PWA;
-4. `pytest` del pipeline de audio;
-5. Docker Compose desde cero, en un proyecto aparte que no borra sus datos locales: salud, 6 condiciones, 60 sesiones simultáneas → 10 por celda y audio MP3;
-6. la compilación de `Dockerfile.render`.
-
-Termina con un resumen y «Todo en verde» o «NO suba ni despliegue». Antes del paso 5, detenga su entorno (`docker compose stop`), porque usa el puerto 8080.
-
-El hook `pre-commit` rechaza el commit si incluye `.env`, certificados (`.pem`, `.pfx`, `.key`) o una URI o contraseña de base de datos. Los ejemplos `usuario:clave@` sí se permiten.
-
-Guarde la salida de `verificar.ps1` (captura o `... | Tee-Object verificacion.txt`) como evidencia en cada revisión técnica, en lugar de la pestaña Actions.
-
 ## Pruebas
 
 ```bash
@@ -338,7 +312,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `GET /health` responde `200 Healthy`.
 - [ ] `GET /health/ready` responde `200` con `postgresql` y `audios` en `Healthy`.
 - [ ] `dotnet test` pasa todas las pruebas.
-- [ ] La CI termina en verde (mientras Actions esté deshabilitado: `tools\verificar.ps1` en verde).
+- [ ] La CI de GitHub (pestaña Actions) termina en verde.
 - [ ] Ningún secreto en el repositorio (`.env` y contraseñas fuera de Git).
 
 ## Verificación de REV-TEC 02
@@ -347,7 +321,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `GET /api/admin/condiciones` con `X-Admin-Key` devuelve las 6 celdas; sin la clave, `401`.
 - [ ] `/openapi/v1.json` muestra todos los endpoints con sus esquemas.
 - [ ] La PWA (`npm run dev`) muestra las cuotas en el Dashboard y el aviso 501 en el Experimento.
-- [ ] La CI termina en verde: back-end, PWA y Docker Compose (o `tools\verificar.ps1`).
+- [ ] La CI de GitHub termina en verde (back-end, PWA y Docker Compose).
 
 ## Verificación de REV-TEC 03
 
@@ -355,7 +329,7 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 - [ ] `POST /api/sesiones` responde `201` con `sesionId` y `audioUrl`, y el audio se reproduce.
 - [ ] Sin consentimiento responde `400`; con un código de estudio incorrecto, `403`.
 - [ ] El Dashboard muestra la sesión «en curso» en su celda.
-- [ ] 60 sesiones simultáneas → 10 por celda (`tools\verificar.ps1`, paso 5).
+- [ ] La CI muestra «En curso por celda: [10, 10, 10, 10, 10, 10]».
 
 ## Problemas frecuentes
 
@@ -378,9 +352,6 @@ Para revisar dependencias vulnerables: `dotnet list package --vulnerable --inclu
 | La PWA en Render dice «El enlace no tiene un código de estudio válido» | Abra la URL con `?codigo=<código>`, el mismo valor de `Estudio__CodigoAcceso`. |
 | El panel responde `429 Too Many Requests` | Se superó el límite de intentos por minuto. Espere un minuto. |
 | La primera visita a Render tarda unos 50 s | El plan gratuito duerme el servicio tras 15 min sin uso. Ábralo unos minutos antes de cada sesión o demostración, junto con `/health/ready` para despertar Neon. |
-| La pestaña Actions de GitHub no ejecuta nada | Actions está deshabilitado en la cuenta universitaria (D-14). Use `tools\verificar.ps1`. |
-| `verificar.ps1`: «El puerto 8080 está en uso» | Detenga su entorno con `docker compose stop` y repita. |
-| `git commit`: «pre-commit: … puede contener secretos» | El hook detectó un `.env` o una contraseña. Quítelo del commit (`git restore --staged <archivo>`) y guarde el valor solo en `.env` o en Render. |
 | La CI falla en «Crear .env de prueba» | `.env.example` debe estar en Git (no en `.gitignore`) y sin valores reales. |
 | Certificación rechazada por duración | Ajuste `velocidad` por voz en `config.json` y repita `generar` y `certificar`. |
 
