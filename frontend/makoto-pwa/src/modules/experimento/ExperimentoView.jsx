@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { sesiones, ApiError } from '../../services/api.js'
-
-const VERSION_CONSENTIMIENTO = 'v1-borrador'
+// D-07: texto definitivo del consentimiento y su versión (antes 'v1-borrador')
+import { CONSENTIMIENTO, VERSION_CONSENTIMIENTO } from './consentimiento.js'
 
 // T2-18: en Render la API exige el código del estudio (Estudio__CodigoAcceso). Se entrega a los
 // participantes dentro del enlace o QR del laboratorio: https://<servicio>.onrender.com/?codigo=XXXX
@@ -29,11 +29,17 @@ export default function ExperimentoView() {
 
   return (
     <section className="tarjeta">
-      <h1>Consentimiento informado</h1>
-      <p className="nota">Texto definitivo pendiente de aprobación (T1-04 / T1-06).</p>
+      <h1>{CONSENTIMIENTO.titulo}</h1>
+      {/* D-07: el participante sabe qué hará, que es voluntario, que sus datos son anónimos y que solo se usan estadísticamente */}
+      {CONSENTIMIENTO.secciones.map((s) => (
+        <div key={s.titulo}>
+          <h2>{s.titulo}</h2>
+          <p>{s.texto}</p>
+        </div>
+      ))}
       <label className="check">
         <input type="checkbox" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} />
-        He leído la información y acepto participar de forma voluntaria y anónima.
+        {CONSENTIMIENTO.aceptacion}
       </label>
       <button disabled={!acepta || estado.tipo === 'cargando'} onClick={comenzar}>
         {estado.tipo === 'cargando' ? 'Conectando…' : 'Comenzar'}

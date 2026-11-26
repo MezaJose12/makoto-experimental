@@ -1,0 +1,25 @@
+#!/bin/sh
+# T2-18: control de secretos antes de cada commit (reemplaza el escaneo de GitHub Actions).
+# Se activa una vez por clon:  git config core.hooksPath .githooks
+# Bloquea el commit si incluye archivos .env, certificados o una URI/contraseña de Neon.
+
+archivos=$(git diff --cached --name-only --diff-filter=ACM)
+for f in $archivos; do
+  case "$f" in
+    .env.example|frontend/makoto-pwa/.env.development|frontend/makoto-pwa/.env.production) ;;
+    .env|*/.env|.env.*|*/.env.*|*.pem|*.pfx|*.key)
+      echo "pre-commit: '$f' puede contener secretos y no debe subirse a Git."
+      exit 1 ;;
+  esac
+done
+
+if git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' \
+   | grep -Eq 'npg_[A-Za-z0-9]{8,}|postgres(ql)?://[^:/ ]+:[^@ ]{6,}@'; then
+  if ! git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' | grep -E 'npg_[A-Za-z0-9]{8,}|postgres(ql)?://[^:/ ]+:[^@ ]{6,}@' | grep -vq 'usuario:clave@'; then
+    exit 0
+  fi
+  echo "pre-commit: el commit contiene lo que parece una URI o contraseña de base de datos."
+  echo "Guárdela solo en su .env (local) o en Render → Environment."
+  exit 1
+fi
+exit 0

@@ -13,8 +13,9 @@ services:
     dockerContext: .
     # /health no consulta la base de datos: Render no despierta a Neon en cada comprobación
     healthCheckPath: /health
-    # Despliega solo cuando la CI de GitHub termina en verde
-    autoDeployTrigger: checksPass
+    # GitHub Actions está deshabilitado (cuenta universitaria): Render NO despliega solo.
+    # Antes de desplegar: tools\verificar.ps1 en verde → Render → Manual Deploy → Deploy latest commit.
+    autoDeployTrigger: off
     envVars:
       # URI de la rama «producción» de Neon (Neon → Connect → Pooled connection)
       - key: DATABASE_URL

@@ -18,6 +18,9 @@ body { margin: 0; background: var(--fondo); }
 .tarjeta { max-width: 640px; margin: 0 auto; background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 24px; }
 .tarjeta.ancha { max-width: 960px; }
 h1 { font-size: 1.4rem; margin-top: 0; }
+/* D-07: subtítulos de las secciones del consentimiento */
+h2 { font-size: 1rem; margin: 16px 0 4px; }
+.tarjeta p { margin: 0 0 8px; }
 .nota { color: var(--suave); font-size: .9rem; }
 .check { display: flex; gap: 8px; align-items: flex-start; margin: 16px 0; }
 .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
